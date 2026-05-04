@@ -1,0 +1,173 @@
+enum LabTestStatus {
+  ACTIVE
+  DISCONTINUED
+}
+
+enum PackageStatus {
+  ACTIVE
+  DISCONTINUED
+}
+
+enum SampleStatus {
+  PENDING
+  COLLECTED
+  PROCESSING
+  COMPLETED
+  DELIVERED
+}
+
+enum TestPaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+enum ReportStatus {
+  PENDING
+  READY
+  DELIVERED
+  ARCHIVED
+}
+
+model DiagnosticCenter {
+  id              String        @id @default(uuid()) @db.Uuid
+  name            String        @unique
+  address         String
+  city            String
+  state           String
+  zipCode         String
+  phone           String
+  email           String
+  latitude        Float
+  longitude       Float
+  operatingHours  String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  labTests        LabTest[]
+  testPackages    TestPackage[]
+  testBookings    TestBooking[]
+
+  @@index([city, state])
+  @@map("diagnostic_centers")
+}
+
+model LabTest {
+  id                  String        @id @default(uuid()) @db.Uuid
+  diagnosticCenterId  String        @db.Uuid
+  name                String
+  code                String
+  description         String?
+  price               Decimal       @db.Decimal(12, 2)
+  turnaroundDays      Int
+  sampleType          String
+  instructions        String?
+  requiresFasting     Boolean       @default(false)
+  status              LabTestStatus @default(ACTIVE)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  diagnosticCenter    DiagnosticCenter @relation(fields: [diagnosticCenterId], references: [id])
+  packageItems        TestPackageItem[]
+  bookingItems        TestBookingItem[]
+  reports             TestReport[]
+
+  @@unique([diagnosticCenterId, code])
+  @@index([diagnosticCenterId, name])
+  @@map("lab_tests")
+}
+
+model TestPackage {
+  id                  String        @id @default(uuid()) @db.Uuid
+  diagnosticCenterId  String        @db.Uuid
+  name                String
+  description         String?
+  originalPrice       Decimal       @db.Decimal(12, 2)
+  discountedPrice     Decimal       @db.Decimal(12, 2)
+  validityDays        Int
+  status              PackageStatus @default(ACTIVE)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  diagnosticCenter    DiagnosticCenter @relation(fields: [diagnosticCenterId], references: [id])
+  items               TestPackageItem[]
+  bookingItems        TestBookingItem[]
+
+  @@unique([diagnosticCenterId, name])
+  @@map("test_packages")
+}
+
+model TestPackageItem {
+  id         String    @id @default(uuid()) @db.Uuid
+  packageId  String    @db.Uuid
+  testId     String    @db.Uuid
+  createdAt  DateTime  @default(now())
+
+  package    TestPackage @relation(fields: [packageId], references: [id])
+  test       LabTest     @relation(fields: [testId], references: [id])
+
+  @@unique([packageId, testId])
+  @@map("test_package_items")
+}
+
+model TestBooking {
+  id                    String            @id @default(uuid()) @db.Uuid
+  patientId             String            @db.Uuid
+  diagnosticCenterId    String            @db.Uuid
+  paymentId             String?           @unique @db.Uuid
+  bookingDate           DateTime
+  sampleCollectionDate  DateTime
+  sampleCollectionTime  String
+  sampleStatus          SampleStatus      @default(PENDING)
+  totalAmount           Decimal           @db.Decimal(12, 2)
+  paymentStatus         TestPaymentStatus @default(PENDING)
+  notes                 String?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  completedAt           DateTime?
+
+  patient               User              @relation(fields: [patientId], references: [id])
+  diagnosticCenter      DiagnosticCenter  @relation(fields: [diagnosticCenterId], references: [id])
+  payment               Payment?          @relation(fields: [paymentId], references: [id])
+  items                 TestBookingItem[]
+  reports               TestReport[]
+
+  @@index([patientId, bookingDate])
+  @@index([diagnosticCenterId, bookingDate])
+  @@map("test_bookings")
+}
+
+model TestBookingItem {
+  id         String    @id @default(uuid()) @db.Uuid
+  bookingId  String    @db.Uuid
+  testId     String?   @db.Uuid
+  packageId  String?   @db.Uuid
+  price      Decimal   @db.Decimal(12, 2)
+  createdAt  DateTime  @default(now())
+
+  booking    TestBooking @relation(fields: [bookingId], references: [id])
+  test       LabTest?    @relation(fields: [testId], references: [id])
+  package    TestPackage? @relation(fields: [packageId], references: [id])
+
+  @@index([bookingId])
+  @@map("test_booking_items")
+}
+
+model TestReport {
+  id             String       @id @default(uuid()) @db.Uuid
+  bookingId      String       @db.Uuid
+  testId         String?      @db.Uuid
+  reportToken    String       @unique
+  reportUrl      String
+  reportFileName String
+  reportStatus   ReportStatus @default(PENDING)
+  generatedAt    DateTime?
+  deliveredAt    DateTime?
+  createdAt      DateTime     @default(now())
+
+  booking        TestBooking  @relation(fields: [bookingId], references: [id])
+  test           LabTest?     @relation(fields: [testId], references: [id])
+
+  @@index([bookingId, reportStatus])
+  @@map("test_reports")
+}

@@ -1,0 +1,150 @@
+enum AppointmentStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TelehealthStatus {
+  REQUESTED
+  ACCEPTED
+  DOCTOR_JOINED
+  PATIENT_JOINED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  MISSED
+}
+
+enum TelehealthSessionStatus {
+  PENDING
+  ACTIVE
+  COMPLETED
+  FAILED
+}
+
+model Appointment {
+  id                     String             @id @default(uuid()) @db.Uuid
+  patientId              String             @db.Uuid
+  doctorId               String             @db.Uuid
+  paymentId              String?            @unique @db.Uuid
+  appointmentDate        DateTime
+  appointmentTime        String
+  durationMinutes        Int
+  status                 AppointmentStatus  @default(SCHEDULED)
+  reasonForVisit         String?
+  notes                  String?
+  consultationFee        Decimal            @db.Decimal(12, 2)
+  isFollowUp             Boolean            @default(false)
+  previousAppointmentId  String?            @db.Uuid
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  cancelledAt            DateTime?
+
+  patient                User               @relation("AppointmentsPatient", fields: [patientId], references: [id])
+  doctor                 User               @relation("AppointmentsDoctor", fields: [doctorId], references: [id])
+  payment                Payment?           @relation(fields: [paymentId], references: [id])
+  previousAppointment    Appointment?       @relation("FollowUpRelation", fields: [previousAppointmentId], references: [id])
+  followUps              Appointment[]      @relation("FollowUpRelation")
+  visitNote              VisitNote?
+  prescription           Prescription?
+
+  @@index([patientId, appointmentDate])
+  @@index([doctorId, appointmentDate])
+  @@map("appointments")
+}
+
+model TelehealthAppointment {
+  id                     String             @id @default(uuid()) @db.Uuid
+  patientId              String             @db.Uuid
+  doctorId               String             @db.Uuid
+  paymentId              String?            @unique @db.Uuid
+  requestedAt            DateTime           @default(now())
+  acceptedAt             DateTime?
+  startedAt              DateTime?
+  endedAt                DateTime?
+  durationMinutes        Int?
+  status                 TelehealthStatus   @default(REQUESTED)
+  queuePriority          Int                @default(0)
+  emergencyType          String?
+  reasonForVisit         String?
+  notes                  String?
+  consultationFee        Decimal            @db.Decimal(12, 2)
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  cancelledAt            DateTime?
+
+  patient                User               @relation("TelehealthPatient", fields: [patientId], references: [id])
+  doctor                 User               @relation("TelehealthDoctor", fields: [doctorId], references: [id])
+  payment                Payment?           @relation(fields: [paymentId], references: [id])
+  session                TelehealthSession?
+
+  @@index([status, requestedAt])
+  @@index([patientId, requestedAt])
+  @@index([doctorId, requestedAt])
+  @@map("telehealth_appointments")
+}
+
+model TelehealthSession {
+  id                String                  @id @default(uuid()) @db.Uuid
+  telehealthId      String                  @unique @db.Uuid
+  videoRoomId       String                  @unique
+  videoRoomToken    String
+  startTime         DateTime?
+  endTime           DateTime?
+  durationSeconds   Int?
+  recordingUrl      String?
+  status            TelehealthSessionStatus @default(PENDING)
+  recordingSize     Int?
+  createdAt         DateTime                @default(now())
+
+  telehealth        TelehealthAppointment   @relation(fields: [telehealthId], references: [id])
+
+  @@map("telehealth_sessions")
+}
+
+model VisitNote {
+  id              String   @id @default(uuid()) @db.Uuid
+  appointmentId   String   @unique @db.Uuid
+  mongoDocId      String?
+  diagnosis       String?
+  treatmentPlan   String?
+  notes           String?
+  attachments     Json?
+  prescriptionId  String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  appointment     Appointment @relation(fields: [appointmentId], references: [id])
+
+  @@map("visit_notes")
+}
+
+model Prescription {
+  id            String               @id @default(uuid()) @db.Uuid
+  appointmentId String               @unique @db.Uuid
+  patientId     String               @db.Uuid
+  doctorId      String               @db.Uuid
+  medicines     Json
+  notes         String?
+  issuedAt      DateTime
+  expiryDate    DateTime?
+  status        PrescriptionStatus   @default(ACTIVE)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  appointment   Appointment          @relation(fields: [appointmentId], references: [id])
+  patient       User                 @relation("PrescriptionsPatient", fields: [patientId], references: [id])
+  doctor        User                 @relation("PrescriptionsDoctor", fields: [doctorId], references: [id])
+
+  @@index([patientId, issuedAt])
+  @@index([doctorId, issuedAt])
+  @@map("prescriptions")
+}
+
+enum PrescriptionStatus {
+  ACTIVE
+  COMPLETED
+  EXPIRED
+  CANCELLED
+}

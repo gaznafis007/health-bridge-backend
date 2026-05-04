@@ -1,0 +1,115 @@
+enum PaymentEntityType {
+  ORDER
+  APPOINTMENT
+  TELEHEALTH_APPOINTMENT
+  TEST_BOOKING
+  AMBULANCE
+}
+
+enum PaymentMethodType {
+  ONLINE
+  CASH
+}
+
+enum PaymentStatus {
+  PENDING
+  PENDING_CASH
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum PaymentGateway {
+  STRIPE
+  BKASH
+  NAGAD
+  MANUAL
+}
+
+enum RefundStatus {
+  INITIATED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum RefundReason {
+  CUSTOMER_REQUEST
+  CANCELLATION
+  DUPLICATE
+  FAILURE
+  OTHER
+}
+
+enum SavedMethodType {
+  CARD
+  MOBILE_WALLET
+  BANK_ACCOUNT
+}
+
+model Payment {
+  id              String            @id @default(uuid()) @db.Uuid
+  entityType      PaymentEntityType
+  entityId        String            @db.Uuid
+  userId          String            @db.Uuid
+  amount          Decimal           @db.Decimal(12, 2)
+  paymentMethod   PaymentMethodType
+  paymentStatus   PaymentStatus     @default(PENDING)
+  transactionId   String?
+  gatewayResponse Json?
+  paymentGateway  PaymentGateway
+  paidAt          DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  user            User              @relation(fields: [userId], references: [id])
+  refunds         Refund[]
+  order           Order?
+  appointment     Appointment?
+  telehealth      TelehealthAppointment?
+  testBooking     TestBooking?
+  ambulanceBooking AmbulanceBooking?
+
+  @@index([userId, createdAt])
+  @@index([entityType, entityId])
+  @@map("payments")
+}
+
+model Refund {
+  id            String       @id @default(uuid()) @db.Uuid
+  paymentId     String       @db.Uuid
+  userId        String       @db.Uuid
+  refundAmount  Decimal      @db.Decimal(12, 2)
+  refundStatus  RefundStatus @default(INITIATED)
+  refundReason  RefundReason
+  notes         String?
+  transactionId String?
+  initiatedAt   DateTime
+  completedAt   DateTime?
+  createdAt     DateTime     @default(now())
+
+  payment       Payment      @relation(fields: [paymentId], references: [id])
+  user          User         @relation(fields: [userId], references: [id])
+
+  @@index([paymentId])
+  @@index([userId, createdAt])
+  @@map("refunds")
+}
+
+model PaymentMethod {
+  id             String          @id @default(uuid()) @db.Uuid
+  userId         String          @db.Uuid
+  methodType     SavedMethodType
+  token          String
+  lastFourDigits String?
+  expiryDate     DateTime?
+  isDefault      Boolean         @default(false)
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  user           User            @relation(fields: [userId], references: [id])
+
+  @@index([userId, isDefault])
+  @@map("payment_methods")
+}

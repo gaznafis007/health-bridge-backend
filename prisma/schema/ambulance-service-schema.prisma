@@ -1,0 +1,130 @@
+enum HealthCenterType {
+  HOSPITAL
+  CLINIC
+  DIAGNOSTIC_CENTER
+}
+
+enum AmbulanceStatus {
+  AVAILABLE
+  ON_DUTY
+  MAINTENANCE
+  INACTIVE
+}
+
+enum AmbulanceVehicleType {
+  BASIC
+  ADVANCED
+  ICU
+}
+
+enum AmbulanceBookingStatus {
+  REQUESTED
+  ACCEPTED
+  ARRIVED
+  IN_TRANSIT
+  COMPLETED
+  CANCELLED
+}
+
+model HealthCenter {
+  id          String           @id @default(uuid()) @db.Uuid
+  name        String           @unique
+  address     String
+  city        String
+  state       String
+  zipCode     String
+  phone       String
+  email       String
+  latitude    Float
+  longitude   Float
+  type        HealthCenterType
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  ambulances  Ambulance[]
+  originBookings AmbulanceBooking[] @relation("OriginCenter")
+  destinationBookings AmbulanceBooking[] @relation("DestinationCenter")
+
+  @@index([city, state])
+  @@map("health_centers")
+}
+
+model Ambulance {
+  id               String               @id @default(uuid()) @db.Uuid
+  healthCenterId   String               @db.Uuid
+  vehicleNumber    String               @unique
+  vehicleType      AmbulanceVehicleType
+  driverName       String
+  driverPhone      String
+  driverLicense    String
+  insuranceNumber  String?
+  status           AmbulanceStatus      @default(AVAILABLE)
+  latitude         Float?
+  longitude        Float?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  healthCenter     HealthCenter         @relation(fields: [healthCenterId], references: [id])
+  bookings         AmbulanceBooking[]
+  locationLogs     AmbulanceLocationLog[]
+
+  @@index([status])
+  @@map("ambulances")
+}
+
+model AmbulanceBooking {
+  id                    String                 @id @default(uuid()) @db.Uuid
+  patientId             String                 @db.Uuid
+  ambulanceId           String                 @db.Uuid
+  paymentId             String?                @unique @db.Uuid
+  originCenterId        String?                @db.Uuid
+  destinationCenterId   String?                @db.Uuid
+  pickupAddress         String
+  destinationAddress    String
+  pickupLatitude        Float
+  pickupLongitude       Float
+  destinationLatitude   Float
+  destinationLongitude  Float
+  estimatedDistance     Float?
+  estimatedFare         Decimal                @db.Decimal(12, 2)
+  actualFare            Decimal?               @db.Decimal(12, 2)
+  status                AmbulanceBookingStatus @default(REQUESTED)
+  emergencyType         String?
+  patientCondition      String?
+  specialRequirements   String?
+  bookedAt              DateTime
+  acceptedAt            DateTime?
+  arrivedAt             DateTime?
+  startedAt             DateTime?
+  completedAt           DateTime?
+  createdAt             DateTime               @default(now())
+
+  patient               User                   @relation(fields: [patientId], references: [id])
+  ambulance             Ambulance              @relation(fields: [ambulanceId], references: [id])
+  payment               Payment?               @relation(fields: [paymentId], references: [id])
+  originCenter          HealthCenter?          @relation("OriginCenter", fields: [originCenterId], references: [id])
+  destinationCenter     HealthCenter?          @relation("DestinationCenter", fields: [destinationCenterId], references: [id])
+  locationLogs          AmbulanceLocationLog[]
+
+  @@index([patientId, bookedAt])
+  @@index([status])
+  @@map("ambulance_bookings")
+}
+
+model AmbulanceLocationLog {
+  id                  String            @id @default(uuid()) @db.Uuid
+  ambulanceBookingId  String            @db.Uuid
+  ambulanceId         String            @db.Uuid
+  latitude            Float
+  longitude           Float
+  accuracy            Float?
+  address             String?
+  recordedAt          DateTime
+  createdAt           DateTime          @default(now())
+
+  ambulanceBooking    AmbulanceBooking  @relation(fields: [ambulanceBookingId], references: [id])
+  ambulance           Ambulance         @relation(fields: [ambulanceId], references: [id])
+
+  @@index([ambulanceBookingId, recordedAt])
+  @@map("ambulance_location_logs")
+}

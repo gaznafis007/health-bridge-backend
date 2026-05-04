@@ -20,10 +20,13 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
+    "@nestjs-modules/ioredis": "^2.2.1",
     "@nestjs/common": "^11.0.1",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
     "@prisma/client": "^7.8.0",
+    "bullmq": "^5.76.5",
+    "ioredis": "^5.10.1",
     "prisma": "^7.8.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
