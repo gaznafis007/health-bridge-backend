@@ -18,6 +18,7 @@ Build Health Bridge backend with clean modular architecture, fast iteration, and
 - ORM/DB: Prisma + PostgreSQL
 - Cache/Realtime: Redis (ioredis, @nestjs-modules/ioredis)
 - Validation: Zod + DTO guards/pipes
+- API docs/testing: Swagger (`@nestjs/swagger`) with JSON docs and route examples
 - Queue/Jobs: Bull/BullMQ (recommended for notifications/reminders)
 - Storage: S3-compatible object storage for reports/files
 - Auth: JWT + refresh token rotation
@@ -26,19 +27,23 @@ Build Health Bridge backend with clean modular architecture, fast iteration, and
 ## Architecture Standards
 - Keep feature-first modules in `src/modules/*`
 - Keep cross-cutting concerns in `src/common/*`
-- Keep generated/shared types in dedicated folders
+- Keep app configuration in `src/config/*`
+- Keep database wiring and Prisma adapters in `src/database/*`
+- Keep generated/shared types in `generated/*` or another dedicated shared folder
 
 Recommended structure:
 ```txt
 src/
   common/
+    constants/
     decorators/
     filters/
     guards/
     interceptors/
+    swagger/
     pipes/
     redis/
-    constants/
+    types/
     utils/
   config/
   database/
@@ -54,16 +59,29 @@ src/
     notification/
     dashboard/
     reports/
+generated/
+  prisma/
+    internal/
+    models/
+prisma/
+  schema/
+    *.prisma
 ```
 
 ## NestJS Layering (Industry Standard)
 For each module, maintain:
+- `*.module.ts` for composition and dependency wiring
 - `*.controller.ts` for HTTP transport only
 - `*.service.ts` for business logic
 - `*.repository.ts` (optional) for complex Prisma queries
 - `dto/` for request/response contracts
 - `types/` for domain types and mapped result types
 - `decorators/` for custom parameter/role decorators
+- `constants/` for module-local constants and enums when needed
+- `repositories/` only when a feature has multiple Prisma query paths that need isolation
+- Swagger decorators on every public controller route: `@ApiTags`, `@ApiOperation`, `@ApiOkResponse`, `@ApiBadRequestResponse`, `@ApiUnauthorizedResponse`, and request body/query param decorators when applicable
+- Swagger docs must be bootstrapped in `src/main.ts` and exposed at `/docs` with `/docs-json` available for smoke tests
+- Reuse a shared Swagger bootstrap helper from `src/common/swagger/*` so e2e tests and production bootstrap stay in sync
 
 Controller rules:
 - No business logic
@@ -98,6 +116,7 @@ Use `RedisKeyService` for all keys. Avoid hardcoded strings.
 - Ship behind feature flags when risky
 - Prefer small PRs with migration + rollback notes
 - Every feature must include: happy path test + one failure path test
+- Every new or changed API route must update Swagger metadata and include an e2e check for the documented route or docs JSON
 
 ## Definition of Done
 - API contracts documented
