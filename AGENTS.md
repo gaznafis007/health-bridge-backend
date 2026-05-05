@@ -14,6 +14,7 @@ Build Health Bridge backend with clean modular architecture, fast iteration, and
 8. Email notification automation
 
 ## Required Stack
+- For installing package use yarn
 - Runtime/API: NestJS
 - ORM/DB: Prisma + PostgreSQL
 - Cache/Realtime: Redis (ioredis, @nestjs-modules/ioredis)
