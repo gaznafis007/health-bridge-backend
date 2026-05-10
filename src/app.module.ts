@@ -8,7 +8,6 @@ import { RedisKeyModule } from './common/redis/redis-key.module';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ECommerceModule } from './modules/e-commerce/e-commerce.module';
-
 @Module({
   imports: [
     ConfigModule.forRoot({
