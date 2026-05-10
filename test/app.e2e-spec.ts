@@ -45,6 +45,9 @@ describe('AppController (e2e)', () => {
           expect(body.paths['/']).toBeDefined();
           expect(body.paths['/auth/signup']).toBeDefined();
           expect(body.paths['/auth/signin']).toBeDefined();
+          expect(body.paths['/e-commerce/guest-sessions']).toBeDefined();
+          expect(body.paths['/e-commerce/medicines']).toBeDefined();
+          expect(body.paths['/e-commerce/checkout']).toBeDefined();
         },
       );
   });
