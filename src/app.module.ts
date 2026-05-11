@@ -6,6 +6,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { RedisKeyModule } from './common/redis/redis-key.module';
 import { DatabaseModule } from './database/database.module';
+import { AmbulanceModule } from './modules/ambulance/ambulance.module';
 import { AppointmentModule } from './modules/appointment/appointment.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ECommerceModule } from './modules/e-commerce/e-commerce.module';
@@ -20,6 +21,7 @@ import { ECommerceModule } from './modules/e-commerce/e-commerce.module';
     DatabaseModule,
     AuthModule,
     AppointmentModule,
+    AmbulanceModule,
     ECommerceModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 60 }]),
   ],
