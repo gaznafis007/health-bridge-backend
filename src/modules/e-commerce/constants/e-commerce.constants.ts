@@ -1,0 +1,2 @@
+export const GUEST_SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
+export const CHECKOUT_IDEMPOTENCY_TTL_SECONDS = 60 * 60 * 24;

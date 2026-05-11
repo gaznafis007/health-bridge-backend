@@ -183,6 +183,8 @@ CREATE TABLE "appointments" (
     "id" UUID NOT NULL,
     "patientId" UUID NOT NULL,
     "doctorId" UUID NOT NULL,
+    "healthCenterId" UUID,
+    "availabilityRuleId" UUID,
     "paymentId" UUID,
     "appointmentDate" TIMESTAMP(3) NOT NULL,
     "appointmentTime" TEXT NOT NULL,
@@ -634,6 +636,7 @@ CREATE TABLE "doctor_profiles" (
 CREATE TABLE "doctor_availability" (
     "id" UUID NOT NULL,
     "doctorId" UUID NOT NULL,
+    "healthCenterId" UUID NOT NULL,
     "dayOfWeek" "DayOfWeek",
     "startTime" TEXT NOT NULL,
     "endTime" TEXT NOT NULL,
@@ -709,6 +712,12 @@ CREATE INDEX "appointments_patientId_appointmentDate_idx" ON "appointments"("pat
 
 -- CreateIndex
 CREATE INDEX "appointments_doctorId_appointmentDate_idx" ON "appointments"("doctorId", "appointmentDate");
+
+-- CreateIndex
+CREATE INDEX "appointments_healthCenterId_idx" ON "appointments"("healthCenterId");
+
+-- CreateIndex
+CREATE INDEX "appointments_availabilityRuleId_idx" ON "appointments"("availabilityRuleId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "telehealth_appointments_paymentId_key" ON "telehealth_appointments"("paymentId");
@@ -861,6 +870,9 @@ CREATE INDEX "doctor_availability_doctorId_dayOfWeek_idx" ON "doctor_availabilit
 CREATE INDEX "doctor_availability_doctorId_specificDate_idx" ON "doctor_availability"("doctorId", "specificDate");
 
 -- CreateIndex
+CREATE INDEX "doctor_availability_healthCenterId_idx" ON "doctor_availability"("healthCenterId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "refresh_tokens_token_key" ON "refresh_tokens"("token");
 
 -- CreateIndex
@@ -901,6 +913,12 @@ ALTER TABLE "appointments" ADD CONSTRAINT "appointments_patientId_fkey" FOREIGN 
 
 -- AddForeignKey
 ALTER TABLE "appointments" ADD CONSTRAINT "appointments_doctorId_fkey" FOREIGN KEY ("doctorId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "appointments" ADD CONSTRAINT "appointments_healthCenterId_fkey" FOREIGN KEY ("healthCenterId") REFERENCES "health_centers"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "appointments" ADD CONSTRAINT "appointments_availabilityRuleId_fkey" FOREIGN KEY ("availabilityRuleId") REFERENCES "doctor_availability"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "appointments" ADD CONSTRAINT "appointments_paymentId_fkey" FOREIGN KEY ("paymentId") REFERENCES "payments"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -1015,6 +1033,9 @@ ALTER TABLE "doctor_profiles" ADD CONSTRAINT "doctor_profiles_userId_fkey" FOREI
 
 -- AddForeignKey
 ALTER TABLE "doctor_availability" ADD CONSTRAINT "doctor_availability_doctorId_fkey" FOREIGN KEY ("doctorId") REFERENCES "doctor_profiles"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "doctor_availability" ADD CONSTRAINT "doctor_availability_healthCenterId_fkey" FOREIGN KEY ("healthCenterId") REFERENCES "health_centers"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "refresh_tokens" ADD CONSTRAINT "refresh_tokens_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
