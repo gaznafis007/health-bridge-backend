@@ -6,6 +6,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { RedisKeyModule } from './common/redis/redis-key.module';
 import { DatabaseModule } from './database/database.module';
+import { AppointmentModule } from './modules/appointment/appointment.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ECommerceModule } from './modules/e-commerce/e-commerce.module';
 @Module({
@@ -18,6 +19,7 @@ import { ECommerceModule } from './modules/e-commerce/e-commerce.module';
     RedisKeyModule,
     DatabaseModule,
     AuthModule,
+    AppointmentModule,
     ECommerceModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 60 }]),
   ],

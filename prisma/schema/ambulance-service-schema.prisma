@@ -41,9 +41,11 @@ model HealthCenter {
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
-  ambulances  Ambulance[]
-  originBookings AmbulanceBooking[] @relation("OriginCenter")
-  destinationBookings AmbulanceBooking[] @relation("DestinationCenter")
+  ambulances          Ambulance[]
+  originBookings      AmbulanceBooking[]   @relation("OriginCenter")
+  destinationBookings AmbulanceBooking[]   @relation("DestinationCenter")
+  doctorAvailabilities DoctorAvailability[]
+  inPersonAppointments Appointment[]       @relation("AppointmentHealthCenter")
 
   @@index([city, state])
   @@map("health_centers")

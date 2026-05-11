@@ -48,7 +48,25 @@ describe('AppController (e2e)', () => {
           expect(body.paths['/e-commerce/guest-sessions']).toBeDefined();
           expect(body.paths['/e-commerce/medicines']).toBeDefined();
           expect(body.paths['/e-commerce/checkout']).toBeDefined();
+          expect(body.paths['/appointments/health-centers']).toBeDefined();
+          expect(body.paths['/appointments/doctors/search']).toBeDefined();
+          expect(body.paths['/appointments/doctors/{doctorUserId}']).toBeDefined();
+          expect(body.paths['/appointments']).toBeDefined();
+          expect(body.paths['/appointments/me/patient']).toBeDefined();
+          expect(body.paths['/appointments/me/doctor']).toBeDefined();
+          expect(body.paths['/appointments/me/doctor/availability']).toBeDefined();
+          expect(
+            body.paths['/appointments/me/doctor/availability/{availabilityId}'],
+          ).toBeDefined();
         },
       );
   });
+
+  it('/appointments/health-centers rejects unauthenticated', () => {
+    return request(app.getHttpServer() as Parameters<typeof request>[0])
+      .get('/appointments/health-centers')
+      .expect(401);
+  });
 });
+
+

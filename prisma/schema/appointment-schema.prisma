@@ -27,6 +27,8 @@ model Appointment {
   id                     String             @id @default(uuid()) @db.Uuid
   patientId              String             @db.Uuid
   doctorId               String             @db.Uuid
+  healthCenterId         String?            @db.Uuid
+  availabilityRuleId     String?            @db.Uuid
   paymentId              String?            @unique @db.Uuid
   appointmentDate        DateTime
   appointmentTime        String
@@ -41,16 +43,20 @@ model Appointment {
   updatedAt              DateTime           @updatedAt
   cancelledAt            DateTime?
 
-  patient                User               @relation("AppointmentsPatient", fields: [patientId], references: [id])
-  doctor                 User               @relation("AppointmentsDoctor", fields: [doctorId], references: [id])
-  payment                Payment?           @relation(fields: [paymentId], references: [id])
-  previousAppointment    Appointment?       @relation("FollowUpRelation", fields: [previousAppointmentId], references: [id])
-  followUps              Appointment[]      @relation("FollowUpRelation")
+  patient                User                     @relation("AppointmentsPatient", fields: [patientId], references: [id])
+  doctor                 User                     @relation("AppointmentsDoctor", fields: [doctorId], references: [id])
+  healthCenter           HealthCenter?            @relation("AppointmentHealthCenter", fields: [healthCenterId], references: [id])
+  availabilityRule       DoctorAvailability?      @relation("AppointmentAvailabilityRule", fields: [availabilityRuleId], references: [id])
+  payment                Payment?                 @relation(fields: [paymentId], references: [id])
+  previousAppointment    Appointment?             @relation("FollowUpRelation", fields: [previousAppointmentId], references: [id])
+  followUps              Appointment[]            @relation("FollowUpRelation")
   visitNote              VisitNote?
   prescription           Prescription?
 
   @@index([patientId, appointmentDate])
   @@index([doctorId, appointmentDate])
+  @@index([healthCenterId])
+  @@index([availabilityRuleId])
   @@map("appointments")
 }
 
