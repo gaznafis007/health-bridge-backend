@@ -58,6 +58,22 @@ describe('AppController (e2e)', () => {
           expect(
             body.paths['/appointments/me/doctor/availability/{availabilityId}'],
           ).toBeDefined();
+          // Ambulance module routes
+          expect(body.paths['/ambulance/health-centers']).toBeDefined();
+          expect(body.paths['/ambulance/fleet']).toBeDefined();
+          expect(body.paths['/ambulance/drivers']).toBeDefined();
+          expect(body.paths['/ambulance/shifts']).toBeDefined();
+          expect(body.paths['/ambulance/bookings']).toBeDefined();
+          expect(body.paths['/ambulance/bookings/me']).toBeDefined();
+          expect(body.paths['/ambulance/bookings/active']).toBeDefined();
+          expect(body.paths['/ambulance/bookings/{bookingId}']).toBeDefined();
+          expect(body.paths['/ambulance/bookings/{bookingId}/cancel']).toBeDefined();
+          expect(body.paths['/ambulance/bookings/{bookingId}/dispatch']).toBeDefined();
+          expect(body.paths['/ambulance/bookings/{bookingId}/arrive']).toBeDefined();
+          expect(body.paths['/ambulance/bookings/{bookingId}/start']).toBeDefined();
+          expect(body.paths['/ambulance/bookings/{bookingId}/complete']).toBeDefined();
+          expect(body.paths['/ambulance/bookings/{bookingId}/location']).toBeDefined();
+          expect(body.paths['/ambulance/bookings/{bookingId}/location/trail']).toBeDefined();
         },
       );
   });
@@ -65,6 +81,25 @@ describe('AppController (e2e)', () => {
   it('/appointments/health-centers rejects unauthenticated', () => {
     return request(app.getHttpServer() as Parameters<typeof request>[0])
       .get('/appointments/health-centers')
+      .expect(401);
+  });
+
+  it('/ambulance/health-centers rejects unauthenticated', () => {
+    return request(app.getHttpServer() as Parameters<typeof request>[0])
+      .get('/ambulance/health-centers')
+      .expect(401);
+  });
+
+  it('/ambulance/bookings rejects unauthenticated', () => {
+    return request(app.getHttpServer() as Parameters<typeof request>[0])
+      .post('/ambulance/bookings')
+      .send({})
+      .expect(401);
+  });
+
+  it('/ambulance/fleet rejects unauthenticated', () => {
+    return request(app.getHttpServer() as Parameters<typeof request>[0])
+      .get('/ambulance/fleet')
       .expect(401);
   });
 });

@@ -2,6 +2,8 @@ enum UserRole {
   PATIENT
   DOCTOR
   ADMIN
+  DISPATCHER
+  DRIVER
 }
 
 enum Gender {
@@ -40,6 +42,8 @@ model User {
   orders                    Order[]
   testBookings              TestBooking[]
   ambulanceBookings         AmbulanceBooking[]
+  driverProfile             DriverProfile?
+  dispatchedAssignments     DispatchAssignment[]    @relation("DispatcherAssignments")
   payments                  Payment[]
   refunds                   Refund[]
   paymentMethods            PaymentMethod[]

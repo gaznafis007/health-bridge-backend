@@ -30,6 +30,14 @@ export class RedisKeyService {
     return this.key('ambulance', 'loc', ambulanceId);
   }
 
+  ambulanceBookingLocation(bookingId: string): string {
+    return this.key('ambulance', 'booking', bookingId, 'loc');
+  }
+
+  activeAmbulanceBookings(): string {
+    return this.key('ambulance', 'active_bookings');
+  }
+
   rateLimit(endpoint: string, actor: RateActor): string {
     if ('userId' in actor) {
       return this.key('rate', 'user', actor.userId, endpoint);
