@@ -65,6 +65,10 @@ export class RedisKeyService {
     return this.key('idempotency', scope, idempotencyKey);
   }
 
+  labBookingIdempotency(key: string): string {
+    return this.key('idempotency', 'lab_booking', key);
+  }
+
   bullPrefix(): string {
     return this.key('bull');
   }

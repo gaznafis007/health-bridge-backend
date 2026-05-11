@@ -78,7 +78,7 @@ prisma/
 - DB: PostgreSQL + Prisma (split schema files)
 - Cache: Redis (all keys from `RedisKeyService`)
 - Queue: Bull/BullMQ for reminders, email, async workflows
-- File storage: S3-compatible bucket for reports and attachments
+- File storage: cloudflare R2-compatible bucket for reports and attachments
 - API docs: Swagger in `src/main.ts`, available at `/docs` and `/docs-json`
 - Swagger setup should live in `src/common/swagger/*` and be reused in tests
 
