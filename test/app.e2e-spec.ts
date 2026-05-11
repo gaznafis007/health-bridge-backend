@@ -102,6 +102,49 @@ describe('AppController (e2e)', () => {
       .get('/ambulance/fleet')
       .expect(401);
   });
+
+  // ── Lab Test module ──────────────────────────────────────────────────────
+
+  it('/docs-json includes lab test routes', () => {
+    return request(app.getHttpServer() as Parameters<typeof request>[0])
+      .get('/docs-json')
+      .expect(200)
+      .expect(
+        ({
+          body,
+        }: {
+          body: { paths: Record<string, unknown> };
+        }) => {
+          expect(body.paths['/lab/centers']).toBeDefined();
+          expect(body.paths['/lab/bookings']).toBeDefined();
+          expect(body.paths['/lab/bookings/me']).toBeDefined();
+          expect(body.paths['/lab/reports']).toBeDefined();
+          expect(body.paths['/lab/reports/me']).toBeDefined();
+          expect(
+            body.paths['/lab/reports/token/{reportToken}'],
+          ).toBeDefined();
+        },
+      );
+  });
+
+  it('/lab/bookings rejects unauthenticated', () => {
+    return request(app.getHttpServer() as Parameters<typeof request>[0])
+      .post('/lab/bookings')
+      .send({})
+      .expect(401);
+  });
+
+  it('/lab/centers rejects unauthenticated', () => {
+    return request(app.getHttpServer() as Parameters<typeof request>[0])
+      .get('/lab/centers')
+      .expect(401);
+  });
+
+  it('/lab/reports/token/:token returns 404 (not 401) for unknown token', () => {
+    return request(app.getHttpServer() as Parameters<typeof request>[0])
+      .get('/lab/reports/token/unknown-token-value')
+      .expect(404);
+  });
 });
 
 

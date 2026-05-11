@@ -21,7 +21,7 @@ Build Health Bridge backend with clean modular architecture, fast iteration, and
 - Validation: Zod + DTO guards/pipes
 - API docs/testing: Swagger (`@nestjs/swagger`) with JSON docs and route examples
 - Queue/Jobs: Bull/BullMQ (recommended for notifications/reminders)
-- Storage: S3-compatible object storage for reports/files
+- Storage: cloudflare R2-compatible object storage for reports/files
 - Auth: JWT + refresh token rotation
 - Observability: structured logging + request id + error tracking (Sentry/OpenTelemetry recommended)
 
