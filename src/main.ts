@@ -17,6 +17,6 @@ async function bootstrap() {
   setupSwagger(app);
   app.enableShutdownHooks();
 
-  await app.listen(process.env.PORT ?? 3000);
+  await app.listen(process.env.PORT ?? 5000);
 }
 void bootstrap();
