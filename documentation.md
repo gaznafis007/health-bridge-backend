@@ -17,14 +17,14 @@ This document describes every **currently exposed** HTTP API in the Health Bridg
 7. [API reference](#api-reference)
    - [App](#app)
    - [Auth](#auth)
-   - [E-commerce (guest medicine)](#e-commerce-guest-medicine)
+   - [Users](#users)
+   - [E-commerce (medicine)](#e-commerce-medicine)
    - [Appointments (in-person)](#appointments-in-person)
+   - [Notifications](#notifications)
+   - [Dashboards](#dashboards)
    - [Lab tests](#lab-tests)
    - [Ambulance (emergency transport)](#ambulance-emergency-transport)
    - [Files](#files)
-   - [Users](#users)
-   - [Notifications](#notifications)
-   - [Dashboards](#dashboards)
 8. [Enums and status machines](#enums-and-status-machines)
 9. [Planned but not exposed yet](#planned-but-not-exposed-yet)
 10. [Environment variables (frontend-relevant)](#environment-variables-frontend-relevant)
@@ -140,25 +140,35 @@ Protected controllers use `JwtAuthGuard` + `RolesGuard`. If the user’s `role` 
 | Header | When | Value |
 |--------|------|--------|
 | `Authorization` | Protected routes | `Bearer <accessToken>` |
+| `Authorization` | Optional | `POST /e-commerce/checkout` — if present and user is `PATIENT`, order is linked to `userId` |
 | `Content-Type` | JSON bodies | `application/json` |
-| `Idempotency-Key` | Optional | Client UUID for **lab** `POST /lab/bookings` and **ambulance** `POST /ambulance/bookings` — replays return the cached booking within TTL |
-| `User-Agent` | Optional | Sent on guest session / signin (server logging) |
+| `Content-Type` | Lab report upload | `multipart/form-data` |
+| `Idempotency-Key` | Optional | **Header** on `POST /lab/bookings` and `POST /ambulance/bookings` (replay returns cached booking) |
+| `x-request-id` | Optional | Correlation id; server echoes it on every response (generates UUID if omitted) |
+| `User-Agent` | Optional | Recorded on guest session / signin |
 
-There is **no** `Accept-Version` or global correlation-id header today; you may send `X-Request-Id` for your own logging (ignored by server).
+**Guest commerce:** there is no guest header. Pass `guestSessionId` in path, query, or body per endpoint.
+
+**Idempotency (e-commerce):** use body field `idempotencyKey` on checkout (not the header).
 
 ---
 
 ## Errors, validation, and rate limits
 
-### Error shape (NestJS default)
+### Error shape (global filter)
+
+All HTTP errors return:
 
 ```json
 {
   "statusCode": 400,
-  "message": "Human-readable or array of validation messages",
-  "error": "Bad Request"
+  "message": "Human-readable string or array of validation messages",
+  "timestamp": "2026-05-31T12:00:00.000Z",
+  "path": "/e-commerce/checkout"
 }
 ```
+
+Validation failures from `ValidationPipe` or Zod typically use **400** with `message` as a string array of field errors.
 
 - **400** — validation / business rule (`BadRequestException`)
 - **401** — missing or invalid JWT (`UnauthorizedException`)
@@ -178,6 +188,7 @@ There is **no** `Accept-Version` or global correlation-id header today; you may 
 |-------|--------|
 | `POST /auth/signup` | 5 / min |
 | `POST /auth/signin` | 10 / min |
+| `POST /auth/refresh` | 20 / min |
 | `POST /lab/bookings` | 10 / min |
 | `POST /ambulance/bookings` | 5 / min |
 | `POST /ambulance/bookings/:id/location` | 120 / min |
@@ -236,20 +247,86 @@ Advance payment is confirmed by admin: `PATCH /lab/bookings/:id/payment/confirm`
 
 All appointment dates/times are **UTC calendar** semantics on the server.
 
+### 5. Logged-in patient medicine
+
+1. `POST /auth/signin` (`PATIENT`)
+2. Guest flow as in §1, but send `Authorization: Bearer` on `POST /e-commerce/checkout` → `userId` set on order
+3. `GET /e-commerce/orders/me` for order history (no `guestSessionId` needed)
+
+### 6. Doctor appointment lifecycle
+
+1. `PATCH /appointments/:id/start` → `IN_PROGRESS`
+2. `POST /appointments/:id/visit-note` (diagnosis, treatment plan)
+3. `POST /appointments/:id/prescription` (medicines JSON array)
+4. `PATCH /appointments/:id/complete` → `COMPLETED`
+
+Patient can `GET` visit note and prescription on the same appointment id.
+
+### 7. Token refresh (any authenticated app)
+
+1. Before access token expires (~15m), `POST /auth/refresh` with `{ "refreshToken" }`
+2. Replace stored access + refresh tokens with the new pair
+3. On logout: `POST /auth/logout` with Bearer access token
+
+### 8. Role dashboards (home screen)
+
+| Role | Endpoint |
+|------|----------|
+| Patient | `GET /dashboard/patient` |
+| Doctor | `GET /dashboard/doctor` |
+| Admin | `GET /dashboard/admin` |
+
+All require `Authorization: Bearer`. No query parameters.
+
+### 9. Notification preferences
+
+1. `GET /notifications/preferences` — load toggles (auto-creates defaults)
+2. `PATCH /notifications/preferences` — save user choices
+3. `GET /notifications/logs?skip=&take=` — delivery history for support UI
+
 ---
 
 ## API reference
+
+> Every endpoint below lists **auth**, **headers**, **params/body**, and **response** shapes the frontend needs. For OpenAPI schemas, use `GET /docs-json`.
 
 ### App
 
 #### `GET /`
 
-Health check.
+| | |
+|--|--|
+| **Auth** | None |
+| **Headers** | `x-request-id` optional |
+| **Response 200** | `string` — `"Hello World!"` |
+
+---
+
+#### `GET /health`
+
+Dependency probe for load balancers.
 
 | | |
 |--|--|
 | **Auth** | None |
-| **Response 200** | `string` — e.g. `"Hello World!"` |
+| **Headers** | `x-request-id` optional |
+
+**Response 200**
+
+```json
+{
+  "status": "ok",
+  "database": "up",
+  "redis": "up",
+  "timestamp": "2026-05-31T12:00:00.000Z"
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `status` | `ok` if DB is up and Redis is up or disabled; else `degraded` |
+| `database` | `up` \| `down` |
+| `redis` | `up` \| `down` \| `disabled` (no `REDIS_URL`) |
 
 ---
 
@@ -330,9 +407,207 @@ Base path: `/auth`
 
 ---
 
-### E-commerce (guest medicine)
+#### `POST /auth/refresh`
 
-Base path: `/e-commerce` — **all routes are public** (no Bearer token).
+| | |
+|--|--|
+| **Auth** | None |
+| **Throttle** | 20/min |
+| **Headers** | `Content-Type: application/json` |
+
+**Request body**
+
+```json
+{
+  "refreshToken": "<refreshToken from signin/signup>"
+}
+```
+
+| Field | Rules |
+|-------|--------|
+| `refreshToken` | string, min 10 chars |
+
+**Response 200**
+
+```json
+{
+  "accessToken": "<new jwt>",
+  "refreshToken": "<new jwt>"
+}
+```
+
+Rotates refresh token server-side (old refresh token invalidated).
+
+| Status | Meaning |
+|--------|---------|
+| 401 | Invalid, expired, or revoked refresh token |
+
+---
+
+#### `POST /auth/logout`
+
+| | |
+|--|--|
+| **Auth** | Bearer (any role) |
+| **Body** | — |
+
+**Response 200**
+
+```json
+{
+  "success": true
+}
+```
+
+Revokes **all** refresh tokens for the user. Access token remains valid until its JWT `exp`.
+
+| Status | Meaning |
+|--------|---------|
+| 401 | Missing/invalid access token |
+
+---
+
+### Users
+
+Base path: `/users` — **all routes require** `Authorization: Bearer` and pass `RolesGuard` where noted.
+
+#### `GET /users/me`
+
+| Roles | any authenticated |
+
+**Response 200**
+
+```json
+{
+  "id": "uuid",
+  "email": "user@example.com",
+  "phone": "+8801700000000",
+  "role": "PATIENT",
+  "firstName": "Nafisa",
+  "lastName": "Rahman",
+  "profilePicture": null,
+  "isVerified": false,
+  "emailVerifiedAt": null,
+  "phoneVerifiedAt": null,
+  "createdAt": "2026-05-31T12:00:00.000Z",
+  "updatedAt": "2026-05-31T12:00:00.000Z",
+  "patientProfile": { "bloodGroup": "O+", "...": "..." },
+  "doctorProfile": null
+}
+```
+
+`doctorProfile.consultationFee` is a **string** decimal when present.
+
+---
+
+#### `PATCH /users/me`
+
+| Roles | any |
+
+**Request body** (all optional)
+
+| Field | Rules |
+|-------|--------|
+| `firstName` | string 1–100 |
+| `lastName` | string 1–100 |
+| `profilePicture` | valid URL |
+
+**Response 200** — same shape as `GET /users/me`.
+
+---
+
+#### `PATCH /users/me/patient-profile`
+
+| Roles | `PATIENT` |
+
+**Request body** (all optional): `bloodGroup`, `height`, `weight`, `dateOfBirth` (ISO date string), `gender` (`MALE`|`FEMALE`|`OTHER`), `emergencyContact`, `emergencyPhone` (phone regex), `medicalHistory`, `allergies`, `address`, `city`, `state`, `zipCode`.
+
+**Response 200** — full user with updated `patientProfile`.
+
+| Status | Meaning |
+|--------|---------|
+| 400 | User is not a patient |
+| 403 | Wrong role |
+
+---
+
+#### `PATCH /users/me/doctor-profile`
+
+| Roles | `DOCTOR` |
+
+**Request body** (all optional): `hospital` (max 200), `biography`, `consultationFee` (number ≥ 0). Does **not** change `status` (admin approves separately).
+
+**Response 200** — full user with updated `doctorProfile`.
+
+---
+
+#### `GET /users`
+
+| Roles | `ADMIN` |
+
+**Query**
+
+| Param | Type | Default |
+|-------|------|---------|
+| `role` | `UserRole` enum | — |
+| `skip` | int ≥ 0 | 0 |
+| `take` | int 1–100 | 20 |
+
+**Response 200**
+
+```json
+{
+  "items": [ /* user objects */ ],
+  "total": 42,
+  "skip": 0,
+  "take": 20
+}
+```
+
+---
+
+#### `PATCH /users/:userId/role`
+
+| Roles | `ADMIN` |
+| **Path** | `userId` UUID |
+
+**Request body**
+
+```json
+{
+  "role": "DISPATCHER"
+}
+```
+
+Allowed: `ADMIN`, `DISPATCHER`, `DRIVER`, `PATIENT`, `DOCTOR`.
+
+**Response 200** — updated user object.
+
+---
+
+#### `PATCH /users/:userId/doctor/approve`
+
+| Roles | `ADMIN` |
+
+Sets `doctorProfile.status` → `ACTIVE`, `approvedAt` → now.
+
+**Response 200** — user with doctor profile.
+
+---
+
+#### `PATCH /users/:userId/doctor/suspend`
+
+| Roles | `ADMIN` |
+
+Sets `doctorProfile.status` → `SUSPENDED`.
+
+**Response 200** — user with doctor profile.
+
+---
+
+### E-commerce (medicine)
+
+Base path: `/e-commerce` — **guest routes are public**; admin and patient order routes require Bearer.
 
 #### `POST /e-commerce/guest-sessions`
 
@@ -456,6 +731,11 @@ Add or replace line quantity (max **20** per SKU).
 
 #### `POST /e-commerce/checkout`
 
+| | |
+|--|--|
+| **Auth** | None, or **optional** `Authorization: Bearer` — when the token is a `PATIENT`, the order is stored with `userId` (guest checkout still works without a token) |
+| **Headers** | `Content-Type: application/json` |
+
 **Request body**
 
 ```json
@@ -506,9 +786,148 @@ Add or replace line quantity (max **20** per SKU).
 
 #### `GET /e-commerce/orders/:orderId`
 
+| | |
+|--|--|
+| **Auth** | None |
+
 **Query:** `guestSessionId` (required, uuid)
 
 **Response 200** — `OrderResponseDto` (must match session).
+
+| Status | Meaning |
+|--------|---------|
+| 404 | Unknown order or session mismatch |
+
+---
+
+#### `GET /e-commerce/orders/me`
+
+| | |
+|--|--|
+| **Auth** | Bearer (`PATIENT` only) |
+
+**Query**
+
+| Param | Type | Default |
+|-------|------|---------|
+| `skip` | int | 0 |
+| `take` | int | 20 |
+
+**Response 200**
+
+```json
+{
+  "items": [ /* OrderResponseDto[] */ ],
+  "total": 3,
+  "skip": 0,
+  "take": 20
+}
+```
+
+Use after logged-in checkout (orders linked via `userId`). No `guestSessionId` required.
+
+---
+
+#### `PATCH /e-commerce/orders/:orderId/delivery-status`
+
+| | |
+|--|--|
+| **Auth** | Bearer (`ADMIN`) |
+| **Path** | `orderId` UUID |
+
+**Request body**
+
+```json
+{
+  "deliveryStatus": "OUT_FOR_DELIVERY"
+}
+```
+
+Allowed: `PENDING`, `CONFIRMED`, `SHIPPED`, `OUT_FOR_DELIVERY`, `DELIVERED`, `CANCELLED`.
+
+**Response 200** — `OrderResponseDto`.
+
+---
+
+#### `POST /e-commerce/categories`
+
+| | |
+|--|--|
+| **Auth** | Bearer (`ADMIN`) |
+
+**Request body**
+
+```json
+{
+  "name": "Pain Relief",
+  "description": "OTC and Rx pain medicines"
+}
+```
+
+| Field | Rules |
+|-------|--------|
+| `name` | string 2–120 chars |
+| `description` | optional string |
+
+**Response 201** — category row (`id`, `name`, `description`, timestamps).
+
+---
+
+#### `PATCH /e-commerce/categories/:id`
+
+| | |
+|--|--|
+| **Auth** | Bearer (`ADMIN`) |
+| **Path** | `id` UUID |
+
+**Request body** (all optional): `name`, `description` — same rules as create.
+
+**Response 200** — updated category.
+
+---
+
+#### `POST /e-commerce/medicines`
+
+| | |
+|--|--|
+| **Auth** | Bearer (`ADMIN`) |
+
+**Request body**
+
+```json
+{
+  "categoryId": "uuid",
+  "name": "Napa 500mg",
+  "genericName": "Paracetamol",
+  "manufacturer": "Beximco",
+  "price": 12.5,
+  "stockQuantity": 100,
+  "requiresPrescription": false
+}
+```
+
+| Field | Rules |
+|-------|--------|
+| `categoryId` | UUID |
+| `name` | 2–200 chars |
+| `price` | number ≥ 0 |
+| `stockQuantity` | int ≥ 0 |
+| `requiresPrescription` | optional boolean (default false) |
+
+**Response 201** — medicine row (`status` defaults to `ACTIVE`).
+
+---
+
+#### `PATCH /e-commerce/medicines/:id`
+
+| | |
+|--|--|
+| **Auth** | Bearer (`ADMIN`) |
+| **Path** | `id` UUID |
+
+**Request body** (all optional): `price`, `stockQuantity`, `status` (`ACTIVE` | `INACTIVE` | `DISCONTINUED`).
+
+**Response 200** — updated medicine.
 
 ---
 
@@ -703,6 +1122,341 @@ Default range: from **today UTC** through **7** inclusive day offsets.
 | Roles | `DOCTOR` |
 
 **Response 204** — no body.
+
+---
+
+#### `GET /appointments/prescriptions/me`
+
+| Roles | `PATIENT` |
+
+**Query**
+
+| Param | Type | Default | Max |
+|-------|------|---------|-----|
+| `skip` | int ≥ 0 | 0 | — |
+| `take` | int 1–100 | 20 | 100 |
+
+**Response 200**
+
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "appointmentId": "uuid",
+      "patientId": "uuid",
+      "doctorId": "uuid",
+      "medicines": [{ "name": "Napa", "dosage": "500mg", "frequency": "twice daily" }],
+      "notes": null,
+      "status": "ACTIVE",
+      "issuedAt": "2026-05-31T12:00:00.000Z",
+      "expiryDate": null
+    }
+  ],
+  "total": 1,
+  "skip": 0,
+  "take": 20
+}
+```
+
+`medicines` is a JSON array (opaque object shape per line item).
+
+---
+
+#### `PATCH /appointments/:id/cancel`
+
+| Roles | `PATIENT`, `DOCTOR`, `ADMIN` |
+| **Path** | `id` — appointment UUID |
+
+**Request body** (optional)
+
+```json
+{
+  "reason": "Patient requested reschedule"
+}
+```
+
+| Field | Rules |
+|-------|--------|
+| `reason` | optional string, max 2000 chars |
+
+**Response 200** — updated appointment (`status` → `CANCELLED`, `cancelledAt` set).
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Already `CANCELLED` or `COMPLETED` |
+| 403 | Not patient/doctor on record or admin |
+
+---
+
+#### `PATCH /appointments/:id/start`
+
+| Roles | `DOCTOR`, `ADMIN` |
+
+Marks visit as in progress.
+
+**Body** — none.
+
+**Response 200** — appointment with `status` → `IN_PROGRESS`.
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Only `SCHEDULED` can be started |
+
+---
+
+#### `PATCH /appointments/:id/complete`
+
+| Roles | `DOCTOR`, `ADMIN` |
+
+**Body** — none.
+
+**Response 200** — appointment with `status` → `COMPLETED`.
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Must be `SCHEDULED` or `IN_PROGRESS` |
+
+---
+
+#### `POST /appointments/:id/visit-note`
+
+| Roles | `DOCTOR` (assigned doctor; `ADMIN` may access appointment but note write is doctor-only) |
+
+**Request body** (all optional)
+
+```json
+{
+  "diagnosis": "Hypertension, controlled",
+  "treatmentPlan": "Continue medication, lifestyle advice",
+  "notes": "Follow up in 3 months"
+}
+```
+
+**Response 200/201** — visit note row (`appointmentId`, `diagnosis`, `treatmentPlan`, `notes`, timestamps). Upserts if a note already exists.
+
+---
+
+#### `GET /appointments/:id/visit-note`
+
+| Roles | `PATIENT`, `DOCTOR`, `ADMIN` (must be party to appointment or admin) |
+
+**Response 200** — visit note object.
+
+| Status | Meaning |
+|--------|---------|
+| 404 | No visit note yet |
+
+---
+
+#### `POST /appointments/:id/prescription`
+
+| Roles | `DOCTOR` |
+
+**Request body**
+
+```json
+{
+  "medicines": [
+    { "name": "Napa", "dosage": "500mg", "frequency": "twice daily", "duration": "5 days" }
+  ],
+  "notes": "Take after food",
+  "expiryDate": "2026-12-31"
+}
+```
+
+| Field | Rules |
+|-------|--------|
+| `medicines` | required array of objects (JSON) |
+| `notes` | optional string |
+| `expiryDate` | optional `YYYY-MM-DD` |
+
+**Response 201** — prescription row (`status` default `ACTIVE`).
+
+| Status | Meaning |
+|--------|---------|
+| 409 | Prescription already exists for this appointment |
+
+---
+
+#### `GET /appointments/:id/prescription`
+
+| Roles | `PATIENT`, `DOCTOR`, `ADMIN` |
+
+**Response 200** — prescription object (same fields as list item above).
+
+| Status | Meaning |
+|--------|---------|
+| 404 | No prescription yet |
+
+---
+
+### Notifications
+
+Base path: `/notifications` — **all routes require** `Authorization: Bearer` (any authenticated role).
+
+Email/SMS delivery is **async** (BullMQ). If `REDIS_URL` is unset, jobs are skipped but preference/log APIs still work.
+
+#### `GET /notifications/preferences`
+
+**Response 200**
+
+```json
+{
+  "id": "uuid",
+  "userId": "uuid",
+  "emailNotifications": true,
+  "smsNotifications": true,
+  "appointmentReminders": true,
+  "orderUpdates": true,
+  "reportNotifications": true,
+  "prescriptionReminders": true,
+  "createdAt": "2026-05-31T12:00:00.000Z",
+  "updatedAt": "2026-05-31T12:00:00.000Z"
+}
+```
+
+Creates default preferences on first read if none exist.
+
+---
+
+#### `PATCH /notifications/preferences`
+
+**Request body** (all optional booleans)
+
+| Field | Meaning |
+|-------|---------|
+| `emailNotifications` | Master email toggle |
+| `smsNotifications` | Master SMS toggle |
+| `appointmentReminders` | Appointment-related messages |
+| `orderUpdates` | Medicine order status |
+| `reportNotifications` | Lab report ready |
+| `prescriptionReminders` | Prescription-related |
+
+**Response 200** — updated preference row.
+
+---
+
+#### `GET /notifications/logs`
+
+**Query**
+
+| Param | Type | Default | Max |
+|-------|------|---------|-----|
+| `skip` | int ≥ 0 | 0 | — |
+| `take` | int 1–100 | 20 | 100 |
+
+**Response 200**
+
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "userId": "uuid",
+      "notificationType": "EMAIL",
+      "category": "REPORT",
+      "subject": "Your lab report is ready",
+      "content": "...",
+      "deliveryStatus": "SENT",
+      "failureReason": null,
+      "recipient": "patient@example.com",
+      "sentAt": "2026-05-31T12:00:00.000Z",
+      "createdAt": "2026-05-31T12:00:00.000Z"
+    }
+  ],
+  "total": 12,
+  "skip": 0,
+  "take": 20
+}
+```
+
+`notificationType`: `EMAIL` | `SMS` | `PUSH`.  
+`category`: `APPOINTMENT` | `ORDER` | `REPORT` | `PRESCRIPTION` | `TRANSACTION`.  
+`deliveryStatus`: `PENDING` | `SENT` | `FAILED` | `BOUNCED` | `UNSUBSCRIBED`.
+
+---
+
+### Dashboards
+
+Base path: `/dashboard` — **Bearer required**; role enforced per route.
+
+#### `GET /dashboard/patient`
+
+| Roles | `PATIENT` |
+
+**Response 200** — aggregate home data (no query params):
+
+```json
+{
+  "upcomingAppointments": [ /* max 5, status SCHEDULED, date >= now, with doctor + healthCenter */ ],
+  "recentLabBookings": [ /* max 5 with diagnosticCenter.name */ ],
+  "recentAmbulanceBookings": [ /* max 5 */ ],
+  "recentOrders": [ /* max 5; totalAmount/finalAmount as strings */ ],
+  "recentReports": [ /* max 5: id, reportFileName, reportStatus, reportToken, createdAt */ ],
+  "recentPrescriptions": [ /* max 5 */ ]
+}
+```
+
+---
+
+#### `GET /dashboard/doctor`
+
+| Roles | `DOCTOR` |
+
+**Response 200**
+
+```json
+{
+  "todayAppointments": [
+    {
+      "id": "uuid",
+      "status": "SCHEDULED",
+      "appointmentDate": "2026-05-31T00:00:00.000Z",
+      "appointmentTime": "10:20",
+      "consultationFee": "800.00",
+      "patient": { "id": "uuid", "firstName": "...", "lastName": "...", "phone": "..." },
+      "healthCenter": { "name": "City Clinic" }
+    }
+  ],
+  "counts": {
+    "scheduled": 12,
+    "completed": 40,
+    "cancelled": 2
+  },
+  "feesEarnedToday": "2400.00"
+}
+```
+
+`todayAppointments` uses **UTC start/end of current calendar day**. `feesEarnedToday` sums `consultationFee` for **completed** appointments today only.
+
+---
+
+#### `GET /dashboard/admin`
+
+| Roles | `ADMIN` |
+
+**Response 200**
+
+```json
+{
+  "today": {
+    "orders": 15,
+    "labBookings": 8,
+    "appointments": 22
+  },
+  "ambulance": {
+    "activeBookings": 3,
+    "fleetAvailable": 5,
+    "fleetOnDuty": 2
+  },
+  "lab": {
+    "pendingPaymentBookings": 4
+  }
+}
+```
+
+Counts use records created **since UTC midnight today**, except `activeBookings` (in-flight ambulance statuses) and `pendingPaymentBookings` (all-time `PENDING_PAYMENT` lab bookings).
 
 ---
 
@@ -969,6 +1723,15 @@ Lab `reportUrl` values already use this pattern via `APP_URL`.
 | `OrderPaymentMethod` | `ONLINE`, `CASH` |
 | `OrderPaymentStatus` | `PENDING`, `PENDING_CASH`, `PAID`, `FAILED` |
 | `DeliveryStatus` | `PENDING`, `CONFIRMED`, `SHIPPED`, `OUT_FOR_DELIVERY`, `DELIVERED`, `CANCELLED` |
+| `MedicineStatus` | `ACTIVE`, `INACTIVE`, `DISCONTINUED` |
+
+### Notifications
+
+| Enum | Values |
+|------|--------|
+| `NotificationType` | `EMAIL`, `SMS`, `PUSH` |
+| `NotificationCategory` | `APPOINTMENT`, `ORDER`, `REPORT`, `PRESCRIPTION`, `TRANSACTION` |
+| `DeliveryStatusLog` | `PENDING`, `SENT`, `FAILED`, `BOUNCED`, `UNSUBSCRIBED` |
 
 ### Lab
 
