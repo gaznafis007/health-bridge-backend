@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-require-imports */
 import { Injectable } from '@nestjs/common';
 import {
   PaymentEntityType,
@@ -10,7 +13,10 @@ import {
   TestBookingStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
-import { AdminReportListQueryDto, BookingListQueryDto } from '../dto/lab-test-request.dto';
+import {
+  AdminReportListQueryDto,
+  BookingListQueryDto,
+} from '../dto/lab-test-request.dto';
 
 @Injectable()
 export class LabTestRepository {
@@ -43,7 +49,10 @@ export class LabTestRepository {
     return this.prisma.labTest.findUnique({ where: { id } });
   }
 
-  createTest(centerId: string, data: Omit<Prisma.LabTestCreateInput, 'diagnosticCenter'>) {
+  createTest(
+    centerId: string,
+    data: Omit<Prisma.LabTestCreateInput, 'diagnosticCenter'>,
+  ) {
     return this.prisma.labTest.create({
       data: {
         ...data,
@@ -73,13 +82,19 @@ export class LabTestRepository {
         : {}),
       ...(params.centerId ? { diagnosticCenterId: params.centerId } : {}),
       ...(params.city
-        ? { diagnosticCenter: { city: { contains: params.city, mode: 'insensitive' } } }
+        ? {
+            diagnosticCenter: {
+              city: { contains: params.city, mode: 'insensitive' },
+            },
+          }
         : {}),
     };
 
     return this.prisma.labTest.findMany({
       where,
-      include: { diagnosticCenter: { select: { id: true, name: true, city: true } } },
+      include: {
+        diagnosticCenter: { select: { id: true, name: true, city: true } },
+      },
       skip: params.skip ?? 0,
       take: params.take ?? 20,
       orderBy: { name: 'asc' },
@@ -113,7 +128,9 @@ export class LabTestRepository {
         ...data,
         diagnosticCenter: { connect: { id: centerId } },
         items: {
-          create: testIds.map((testId) => ({ test: { connect: { id: testId } } })),
+          create: testIds.map((testId) => ({
+            test: { connect: { id: testId } },
+          })),
         },
       },
       include: { items: { include: { test: true } } },
@@ -134,7 +151,11 @@ export class LabTestRepository {
     paymentMethod: string;
     notes?: string;
     totalAmount: Prisma.Decimal;
-    items: Array<{ testId?: string; packageId?: string; price: Prisma.Decimal }>;
+    items: Array<{
+      testId?: string;
+      packageId?: string;
+      price: Prisma.Decimal;
+    }>;
   }) {
     const methodType =
       params.paymentMethod.toUpperCase() === 'CASH'
@@ -199,7 +220,9 @@ export class LabTestRepository {
       include: {
         items: true,
         diagnosticCenter: true,
-        patient: { select: { id: true, email: true, firstName: true, lastName: true } },
+        patient: {
+          select: { id: true, email: true, firstName: true, lastName: true },
+        },
         payment: true,
         reports: true,
       },
@@ -209,7 +232,10 @@ export class LabTestRepository {
   listPatientBookings(patientId: string, query: BookingListQueryDto) {
     return this.prisma.testBooking.findMany({
       where: { patientId },
-      include: { items: true, diagnosticCenter: { select: { id: true, name: true } } },
+      include: {
+        items: true,
+        diagnosticCenter: { select: { id: true, name: true } },
+      },
       orderBy: { bookingDate: 'desc' },
       skip: query.skip ?? 0,
       take: query.take ?? 20,
@@ -225,7 +251,9 @@ export class LabTestRepository {
       include: {
         items: true,
         diagnosticCenter: { select: { id: true, name: true } },
-        patient: { select: { id: true, firstName: true, lastName: true, email: true } },
+        patient: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
         payment: true,
       },
       orderBy: { bookingDate: 'desc' },
@@ -311,7 +339,14 @@ export class LabTestRepository {
       include: {
         booking: {
           include: {
-            patient: { select: { id: true, email: true, firstName: true, lastName: true } },
+            patient: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
             diagnosticCenter: { select: { id: true, name: true } },
           },
         },
@@ -347,7 +382,9 @@ export class LabTestRepository {
     return this.prisma.testReport.count({
       where: {
         bookingId,
-        reportStatus: { notIn: [ReportStatus.DELIVERED, ReportStatus.ARCHIVED] },
+        reportStatus: {
+          notIn: [ReportStatus.DELIVERED, ReportStatus.ARCHIVED],
+        },
       },
     });
   }
@@ -379,7 +416,14 @@ export class LabTestRepository {
         include: {
           booking: {
             include: {
-              patient: { select: { id: true, firstName: true, lastName: true, email: true } },
+              patient: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                },
+              },
               diagnosticCenter: { select: { id: true, name: true } },
             },
           },
