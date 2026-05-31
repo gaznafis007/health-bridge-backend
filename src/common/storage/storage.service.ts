@@ -23,7 +23,7 @@ export class StorageService {
     const accessKeyId = process.env.R2_ACCESS_KEY_ID;
     const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
     this.bucket = process.env.R2_BUCKET ?? '';
-    this.appUrl = process.env.APP_URL ?? 'http://localhost:3000';
+    this.appUrl = process.env.APP_URL ?? 'http://localhost:5000';
 
     if (!endpoint || !accessKeyId || !secretAccessKey || !this.bucket) {
       this.logger.warn(

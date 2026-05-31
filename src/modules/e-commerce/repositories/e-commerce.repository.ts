@@ -13,6 +13,7 @@ type PrismaExecutor = PrismaService | Prisma.TransactionClient;
 
 type CreateOrderInput = {
   guestSessionId: string;
+  userId?: string | null;
   paymentMethod: OrderPaymentMethod;
   paymentStatus: OrderPaymentStatus;
   deliveryAddress: string;
@@ -142,6 +143,7 @@ export class ECommerceRepository {
       const order = await tx.order.create({
         data: {
           guestSessionId: input.guestSessionId,
+          userId: input.userId ?? null,
           paymentMethod: input.paymentMethod,
           paymentStatus: input.paymentStatus,
           deliveryStatus: DeliveryStatus.PENDING,
@@ -207,5 +209,68 @@ export class ECommerceRepository {
 
       return order;
     });
+  }
+
+  createCategory(name: string, description?: string) {
+    return this.prisma.medicineCategory.create({
+      data: { name, description },
+    });
+  }
+
+  updateCategory(id: string, data: { name?: string; description?: string }) {
+    return this.prisma.medicineCategory.update({ where: { id }, data });
+  }
+
+  createMedicine(data: {
+    categoryId: string;
+    name: string;
+    genericName?: string;
+    manufacturer?: string;
+    price: Prisma.Decimal;
+    stockQuantity: number;
+    requiresPrescription: boolean;
+  }) {
+    return this.prisma.medicine.create({
+      data,
+      include: { category: true },
+    });
+  }
+
+  updateMedicine(
+    id: string,
+    data: {
+      price?: Prisma.Decimal;
+      stockQuantity?: number;
+      status?: MedicineStatus;
+    },
+  ) {
+    return this.prisma.medicine.update({
+      where: { id },
+      data,
+      include: { category: true },
+    });
+  }
+
+  updateOrderDeliveryStatus(orderId: string, deliveryStatus: DeliveryStatus) {
+    return this.prisma.order.update({
+      where: { id: orderId },
+      data: { deliveryStatus },
+      include: {
+        items: { include: { medicine: true } },
+      },
+    });
+  }
+
+  listOrdersByUserId(userId: string, skip: number, take: number) {
+    return Promise.all([
+      this.prisma.order.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+        include: { items: { include: { medicine: true } } },
+      }),
+      this.prisma.order.count({ where: { userId } }),
+    ]);
   }
 }

@@ -22,6 +22,8 @@ import Redis from 'ioredis';
 
 import { PrismaService } from '../../database/prisma.service';
 import { RedisKeyService } from '../../common/redis/redis-key.service';
+import { NOTIFICATION_JOB_TYPES } from '../notification/constants/notification.constants';
+import { NotificationService } from '../notification/notification.service';
 import type { JwtRequestUser } from '../../common/types/jwt-request-user';
 import { AmbulanceRepository } from './repositories/ambulance.repository';
 import {
@@ -57,6 +59,7 @@ export class AmbulanceService implements OnModuleDestroy {
     private readonly repo: AmbulanceRepository,
     private readonly prisma: PrismaService,
     private readonly redisKey: RedisKeyService,
+    private readonly notifications: NotificationService,
   ) {
     const redisUrl = process.env.REDIS_URL;
     this.redis = redisUrl
@@ -623,6 +626,16 @@ export class AmbulanceService implements OnModuleDestroy {
         5,
         best.version,
       );
+
+      const accepted = await this.repo.findBookingById(bookingId);
+      if (accepted?.patient?.email) {
+        void this.notifications.enqueue(NOTIFICATION_JOB_TYPES.AMBULANCE_ACCEPTED, {
+          userId: accepted.patientId,
+          recipient: accepted.patient.email,
+          subject: 'Ambulance dispatched',
+          data: { bookingId, status: accepted.status },
+        });
+      }
     } catch {
       // Auto-dispatch is best-effort; booking remains REQUESTED for manual dispatch
     }

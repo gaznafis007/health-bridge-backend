@@ -6,14 +6,19 @@ import {
   Ip,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Put,
   Query,
   Req,
+  UseGuards,
 } from '@nestjs/common';
+import { UserRole } from '@prisma/client';
 import {
   ApiBadRequestResponse,
+  ApiBearerAuth,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -22,6 +27,12 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import type { JwtRequestUser } from '../../common/types/jwt-request-user';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { CartResponseDto } from './dto/cart-response.dto';
 import {
@@ -44,6 +55,14 @@ import {
   UpsertCartItemDto,
   upsertCartItemSchema,
 } from './dto/upsert-cart-item.dto';
+import {
+  CreateCategoryDto,
+  CreateMedicineDto,
+  PatientOrdersQueryDto,
+  UpdateCategoryDto,
+  UpdateDeliveryStatusDto,
+  UpdateMedicineDto,
+} from './dto/admin-catalog.dto';
 import { ECommerceService } from './e-commerce.service';
 
 @ApiTags('e-commerce')
@@ -127,16 +146,87 @@ export class ECommerceController {
   }
 
   @Post('checkout')
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Checkout guest medicine cart into an order' })
   @ApiCreatedResponse({ type: OrderResponseDto })
   @ApiOkResponse({ type: OrderResponseDto })
   @ApiBadRequestResponse({ description: 'Empty cart, invalid delivery input, or insufficient stock' })
   @ApiNotFoundResponse({ description: 'Guest session or medicine not found' })
-  @ApiUnauthorizedResponse({ description: 'Not applicable for this public route' })
   checkout(
     @Body(new ZodValidationPipe(checkoutSchema)) dto: CheckoutDto,
+    @CurrentUser() user: JwtRequestUser | null,
   ): Promise<OrderResponseDto> {
-    return this.ecommerceService.checkout(dto);
+    return this.ecommerceService.checkout(dto, user);
+  }
+
+  @Get('orders/me')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PATIENT)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List medicine orders for authenticated patient' })
+  @ApiOkResponse()
+  @ApiUnauthorizedResponse()
+  @ApiForbiddenResponse()
+  myOrders(
+    @CurrentUser() user: JwtRequestUser,
+    @Query() query: PatientOrdersQueryDto,
+  ) {
+    return this.ecommerceService.listMyOrders(user, query);
+  }
+
+  @Patch('orders/:orderId/delivery-status')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update order delivery status (admin)' })
+  @ApiOkResponse({ type: OrderResponseDto })
+  updateDeliveryStatus(
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Body() dto: UpdateDeliveryStatusDto,
+  ) {
+    return this.ecommerceService.updateDeliveryStatus(orderId, dto);
+  }
+
+  @Post('categories')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiCreatedResponse()
+  createCategory(@Body() dto: CreateCategoryDto) {
+    return this.ecommerceService.createCategory(dto);
+  }
+
+  @Patch('categories/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOkResponse()
+  updateCategory(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateCategoryDto,
+  ) {
+    return this.ecommerceService.updateCategory(id, dto);
+  }
+
+  @Post('medicines')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiCreatedResponse()
+  createMedicine(@Body() dto: CreateMedicineDto) {
+    return this.ecommerceService.createMedicine(dto);
+  }
+
+  @Patch('medicines/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOkResponse()
+  updateMedicine(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateMedicineDto,
+  ) {
+    return this.ecommerceService.updateMedicine(id, dto);
   }
 
   @Get('orders/:orderId')

@@ -187,7 +187,7 @@ export class AmbulanceRepository {
     return this.prisma.ambulanceBooking.findUnique({
       where: { id },
       include: {
-        patient:           { select: { id: true, firstName: true, lastName: true, phone: true } },
+        patient:           { select: { id: true, firstName: true, lastName: true, phone: true, email: true } },
         ambulance:         { select: { id: true, vehicleNumber: true, vehicleType: true, latitude: true, longitude: true } },
         driver:            { include: { user: { select: { id: true, firstName: true, lastName: true, phone: true } } } },
         originCenter:      { select: { id: true, name: true, address: true } },

@@ -67,11 +67,6 @@ export class AuthRepository {
     userAgent?: string,
     ipAddress?: string,
   ) {
-    await this.prisma.refreshToken.updateMany({
-      where: { userId, isRevoked: false },
-      data: { isRevoked: true },
-    });
-
     return this.prisma.refreshToken.create({
       data: {
         userId,
@@ -81,5 +76,34 @@ export class AuthRepository {
         ipAddress,
       },
     });
+  }
+
+  findActiveRefreshTokensForUser(userId: string) {
+    return this.prisma.refreshToken.findMany({
+      where: {
+        userId,
+        isRevoked: false,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  revokeRefreshTokenById(id: string) {
+    return this.prisma.refreshToken.update({
+      where: { id },
+      data: { isRevoked: true },
+    });
+  }
+
+  revokeAllUserTokens(userId: string) {
+    return this.prisma.refreshToken.updateMany({
+      where: { userId, isRevoked: false },
+      data: { isRevoked: true },
+    });
+  }
+
+  findUserById(id: string) {
+    return this.prisma.user.findUnique({ where: { id } });
   }
 }

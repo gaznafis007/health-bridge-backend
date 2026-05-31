@@ -1,17 +1,22 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import {
+  AppointmentStatus,
   DoctorAvailability,
   DoctorStatus,
   HealthCenter,
   Prisma,
+  UserRole,
 } from '@prisma/client';
 
 import type { JwtRequestUser } from '../../common/types/jwt-request-user';
+import { NOTIFICATION_JOB_TYPES } from '../notification/constants/notification.constants';
+import { NotificationService } from '../notification/notification.service';
 import {
   APPOINTMENT_DOCTOR_SCHEDULE_INCLUSIVE_DAY_TAIL,
 } from './constants/appointment.constants';
@@ -24,6 +29,12 @@ import {
   SearchDoctorsQueryDto,
   UpdateAvailabilityDto,
 } from './dto/appointment.dto';
+import {
+  CancelAppointmentDto,
+  CreatePrescriptionDto,
+  CreateVisitNoteDto,
+  PrescriptionListQueryDto,
+} from './dto/appointment-action.dto';
 import type {
   AppointmentSlotDto,
   AppointmentSlotGroupDto,
@@ -55,7 +66,10 @@ type HealthCentreBrief = {
 
 @Injectable()
 export class AppointmentService {
-  constructor(private readonly repo: AppointmentRepository) {}
+  constructor(
+    private readonly repo: AppointmentRepository,
+    private readonly notifications: NotificationService,
+  ) {}
 
   listHealthCentres() {
     return this.repo.listHealthCenters();
@@ -137,7 +151,8 @@ export class AppointmentService {
     };
   }
 
-  async book(patientId: string, dto: BookAppointmentDto) {
+  async book(user: JwtRequestUser, dto: BookAppointmentDto) {
+    const patientId = user.id;
     const utcDay = parseUtcDateOnly(dto.date);
     const rule = await this.repo.findAvailabilityRuleBookingContext(
       dto.availabilityRuleId,
@@ -173,7 +188,7 @@ export class AppointmentService {
     }
 
     try {
-      return await this.repo.createAppointment({
+      const appointment = await this.repo.createAppointment({
         patientId,
         doctorId: doctorUserId,
         healthCenterId: rule.healthCenterId,
@@ -184,6 +199,25 @@ export class AppointmentService {
         consultationFee: rule.doctor.consultationFee,
         reasonForVisit: dto.reasonForVisit,
       });
+
+      const reminderAt = utcDay.getTime() - 24 * 60 * 60 * 1000;
+      const delayMs = Math.max(0, reminderAt - Date.now());
+      void this.notifications.enqueue(
+        NOTIFICATION_JOB_TYPES.APPOINTMENT_REMINDER,
+        {
+          userId: patientId,
+          recipient: user.email,
+          subject: 'Appointment reminder',
+          data: {
+            appointmentId: appointment.id,
+            date: dto.date,
+            time: dto.startTime,
+          },
+        },
+        { delayMs },
+      );
+
+      return appointment;
     } catch (e) {
       if (
         e instanceof Prisma.PrismaClientKnownRequestError &&
@@ -327,6 +361,158 @@ export class AppointmentService {
       throw new NotFoundException('Availability not found');
     }
     return { deleted: true };
+  }
+
+  async cancelAppointment(
+    appointmentId: string,
+    user: JwtRequestUser,
+    dto: CancelAppointmentDto,
+  ) {
+    const appt = await this.requireAppointmentAccess(appointmentId, user);
+    if (
+      appt.status === AppointmentStatus.CANCELLED ||
+      appt.status === AppointmentStatus.COMPLETED
+    ) {
+      throw new BadRequestException('Appointment cannot be cancelled');
+    }
+    return this.repo.updateAppointmentStatus(
+      appointmentId,
+      AppointmentStatus.CANCELLED,
+      {
+        cancelledAt: new Date(),
+        notes: dto.reason ?? appt.notes ?? undefined,
+      },
+    );
+  }
+
+  async startAppointment(appointmentId: string, user: JwtRequestUser) {
+    await this.requireDoctorOrAdmin(appointmentId, user);
+    const appt = await this.repo.findAppointmentById(appointmentId);
+    if (!appt || appt.status !== AppointmentStatus.SCHEDULED) {
+      throw new BadRequestException('Only scheduled appointments can be started');
+    }
+    return this.repo.updateAppointmentStatus(
+      appointmentId,
+      AppointmentStatus.IN_PROGRESS,
+    );
+  }
+
+  async completeAppointment(appointmentId: string, user: JwtRequestUser) {
+    await this.requireDoctorOrAdmin(appointmentId, user);
+    const appt = await this.repo.findAppointmentById(appointmentId);
+    if (
+      !appt ||
+      (appt.status !== AppointmentStatus.SCHEDULED &&
+        appt.status !== AppointmentStatus.IN_PROGRESS)
+    ) {
+      throw new BadRequestException('Appointment cannot be completed');
+    }
+    return this.repo.updateAppointmentStatus(
+      appointmentId,
+      AppointmentStatus.COMPLETED,
+    );
+  }
+
+  async upsertVisitNote(
+    appointmentId: string,
+    user: JwtRequestUser,
+    dto: CreateVisitNoteDto,
+  ) {
+    const appt = await this.requireDoctorOrAdmin(appointmentId, user);
+    if (appt.doctorId !== user.id && user.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('Only the assigned doctor can add visit notes');
+    }
+    return this.repo.upsertVisitNote(appointmentId, dto);
+  }
+
+  async getVisitNote(appointmentId: string, user: JwtRequestUser) {
+    await this.requireAppointmentAccess(appointmentId, user);
+    const note = await this.repo.findVisitNote(appointmentId);
+    if (!note) {
+      throw new NotFoundException('Visit note not found');
+    }
+    return note;
+  }
+
+  async createPrescription(
+    appointmentId: string,
+    user: JwtRequestUser,
+    dto: CreatePrescriptionDto,
+  ) {
+    const appt = await this.requireDoctorOrAdmin(appointmentId, user);
+    if (appt.doctorId !== user.id && user.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('Only the assigned doctor can prescribe');
+    }
+    const existing = await this.repo.findPrescriptionByAppointment(appointmentId);
+    if (existing) {
+      throw new ConflictException('Prescription already exists for this appointment');
+    }
+    return this.repo.createPrescription({
+      appointmentId,
+      patientId: appt.patientId,
+      doctorId: appt.doctorId,
+      medicines: dto.medicines,
+      notes: dto.notes,
+      issuedAt: new Date(),
+      expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : undefined,
+    });
+  }
+
+  async getPrescription(appointmentId: string, user: JwtRequestUser) {
+    await this.requireAppointmentAccess(appointmentId, user);
+    const rx = await this.repo.findPrescriptionByAppointment(appointmentId);
+    if (!rx) {
+      throw new NotFoundException('Prescription not found');
+    }
+    return rx;
+  }
+
+  async listMyPrescriptions(user: JwtRequestUser, query: PrescriptionListQueryDto) {
+    if (user.role !== UserRole.PATIENT) {
+      throw new ForbiddenException('Patients only');
+    }
+    const skip = query.skip ?? 0;
+    const take = query.take ?? 20;
+    const [items, total] = await this.repo.listPatientPrescriptions(
+      user.id,
+      skip,
+      take,
+    );
+    return { items, total, skip, take };
+  }
+
+  private async requireAppointmentAccess(
+    appointmentId: string,
+    user: JwtRequestUser,
+  ) {
+    const appt = await this.repo.findAppointmentById(appointmentId);
+    if (!appt) {
+      throw new NotFoundException('Appointment not found');
+    }
+    const isPatient = appt.patientId === user.id;
+    const isDoctor = appt.doctorId === user.id;
+    const isAdmin = user.role === UserRole.ADMIN;
+    if (!isPatient && !isDoctor && !isAdmin) {
+      throw new ForbiddenException('Access denied');
+    }
+    return appt;
+  }
+
+  private async requireDoctorOrAdmin(
+    appointmentId: string,
+    user: JwtRequestUser,
+  ) {
+    const appt = await this.repo.findAppointmentById(appointmentId);
+    if (!appt) {
+      throw new NotFoundException('Appointment not found');
+    }
+    if (user.role === UserRole.ADMIN) {
+      return appt;
+    }
+    if (user.role !== UserRole.DOCTOR || appt.doctorId !== user.id) {
+      throw new ForbiddenException('Doctor access required');
+    }
+    return appt;
   }
 
   private async validateAvailabilityDtoShape(dto: CreateAvailabilityDto) {
