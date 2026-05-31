@@ -8,7 +8,11 @@ import {
   OrderPaymentMethod,
   OrderPaymentStatus,
   Prisma,
+  UserRole,
 } from '@prisma/client';
+import type { JwtRequestUser } from '../../common/types/jwt-request-user';
+import { NOTIFICATION_JOB_TYPES } from '../notification/constants/notification.constants';
+import { NotificationService } from '../notification/notification.service';
 import { randomUUID } from 'crypto';
 import {
   CHECKOUT_IDEMPOTENCY_TTL_SECONDS,
@@ -22,6 +26,14 @@ import { MedicineCategoryDto } from './dto/medicine-category.dto';
 import { MedicineSummaryDto } from './dto/medicine-summary.dto';
 import { OrderResponseDto } from './dto/order-response.dto';
 import { UpsertCartItemDto } from './dto/upsert-cart-item.dto';
+import {
+  CreateCategoryDto,
+  CreateMedicineDto,
+  PatientOrdersQueryDto,
+  UpdateCategoryDto,
+  UpdateDeliveryStatusDto,
+  UpdateMedicineDto,
+} from './dto/admin-catalog.dto';
 import { ECommerceRepository } from './repositories/e-commerce.repository';
 import { ECommerceStoreService } from './e-commerce-store.service';
 import { CartState } from './types/cart.type';
@@ -31,6 +43,7 @@ export class ECommerceService {
   constructor(
     private readonly ecommerceRepository: ECommerceRepository,
     private readonly ecommerceStore: ECommerceStoreService,
+    private readonly notifications: NotificationService,
   ) {}
 
   async createGuestSession(
@@ -156,7 +169,10 @@ export class ECommerceService {
     return this.buildCartResponse(session.sessionId, session.expiresAt, cart);
   }
 
-  async checkout(dto: CheckoutDto): Promise<OrderResponseDto> {
+  async checkout(
+    dto: CheckoutDto,
+    user?: JwtRequestUser | null,
+  ): Promise<OrderResponseDto> {
     const cachedOrder = await this.ecommerceStore.getIdempotency<OrderResponseDto>(
       'medicine-checkout',
       dto.idempotencyKey,
@@ -208,6 +224,7 @@ export class ECommerceService {
 
     const order = await this.ecommerceRepository.checkoutOrder({
       guestSessionId: session.sessionId,
+      userId: user?.role === UserRole.PATIENT ? user.id : null,
       paymentMethod: dto.paymentMethod,
       paymentStatus:
         dto.paymentMethod === OrderPaymentMethod.CASH
@@ -237,7 +254,77 @@ export class ECommerceService {
       CHECKOUT_IDEMPOTENCY_TTL_SECONDS,
     );
 
+    if (user?.email) {
+      void this.notifications.enqueue(NOTIFICATION_JOB_TYPES.ORDER_STATUS, {
+        userId: user.id,
+        recipient: user.email,
+        subject: 'Order placed',
+        data: { orderId: order.id, deliveryStatus: order.deliveryStatus },
+      });
+    }
+
     return response;
+  }
+
+  async listMyOrders(user: JwtRequestUser, query: PatientOrdersQueryDto) {
+    if (user.role !== UserRole.PATIENT) {
+      throw new BadRequestException('Patients only');
+    }
+    const skip = query.skip ?? 0;
+    const take = query.take ?? 20;
+    const [orders, total] = await this.ecommerceRepository.listOrdersByUserId(
+      user.id,
+      skip,
+      take,
+    );
+    return {
+      items: orders.map((o) => this.mapOrder(o)),
+      total,
+      skip,
+      take,
+    };
+  }
+
+  async updateDeliveryStatus(orderId: string, dto: UpdateDeliveryStatusDto) {
+    const order = await this.ecommerceRepository.findOrderById(orderId);
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+    const updated = await this.ecommerceRepository.updateOrderDeliveryStatus(
+      orderId,
+      dto.deliveryStatus,
+    );
+    return this.mapOrder(updated);
+  }
+
+  createCategory(dto: CreateCategoryDto) {
+    return this.ecommerceRepository.createCategory(dto.name, dto.description);
+  }
+
+  updateCategory(id: string, dto: UpdateCategoryDto) {
+    return this.ecommerceRepository.updateCategory(id, dto);
+  }
+
+  createMedicine(dto: CreateMedicineDto) {
+    return this.ecommerceRepository.createMedicine({
+      categoryId: dto.categoryId,
+      name: dto.name,
+      genericName: dto.genericName,
+      manufacturer: dto.manufacturer,
+      price: new Prisma.Decimal(dto.price),
+      stockQuantity: dto.stockQuantity,
+      requiresPrescription: dto.requiresPrescription ?? false,
+    });
+  }
+
+  updateMedicine(id: string, dto: UpdateMedicineDto) {
+    return this.ecommerceRepository.updateMedicine(id, {
+      ...(dto.price !== undefined && { price: new Prisma.Decimal(dto.price) }),
+      ...(dto.stockQuantity !== undefined && {
+        stockQuantity: dto.stockQuantity,
+      }),
+      ...(dto.status !== undefined && { status: dto.status }),
+    });
   }
 
   async getOrder(

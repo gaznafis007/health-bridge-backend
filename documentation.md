@@ -22,6 +22,9 @@ This document describes every **currently exposed** HTTP API in the Health Bridg
    - [Lab tests](#lab-tests)
    - [Ambulance (emergency transport)](#ambulance-emergency-transport)
    - [Files](#files)
+   - [Users](#users)
+   - [Notifications](#notifications)
+   - [Dashboards](#dashboards)
 8. [Enums and status machines](#enums-and-status-machines)
 9. [Planned but not exposed yet](#planned-but-not-exposed-yet)
 10. [Environment variables (frontend-relevant)](#environment-variables-frontend-relevant)
@@ -34,9 +37,13 @@ This document describes every **currently exposed** HTTP API in the Health Bridg
 
 | Feature | Audience | Auth | Summary |
 |--------|----------|------|---------|
-| **Auth** | Patient, Doctor | Public signup/signin | JWT access + refresh tokens; role in token |
-| **Guest medicine commerce** | Anyone (guest) | None | Session → browse → cart → checkout → track order |
-| **In-person appointments** | Patient, Doctor | Bearer JWT | Search doctors, book slots (UTC), manage availability |
+| **Auth** | Patient, Doctor | Public signup/signin/refresh | JWT access + refresh rotation; logout revokes refresh tokens |
+| **Users** | All roles, Admin | Bearer JWT | Profile, patient/doctor profile updates, admin user management |
+| **Guest medicine commerce** | Guest + Patient | Optional Bearer on checkout | Session → browse → cart → checkout → track; patient `orders/me` |
+| **E-commerce admin** | Admin | Bearer JWT | Category/medicine CRUD, delivery status updates |
+| **In-person appointments** | Patient, Doctor | Bearer JWT | Search, book, lifecycle, visit notes, prescriptions |
+| **Notifications** | Authenticated | Bearer JWT | Preferences, delivery logs; async email via BullMQ |
+| **Dashboards** | Patient, Doctor, Admin | Bearer JWT | Aggregated home-screen data per role |
 | **Lab test booking** | Patient, Admin | Bearer JWT | Centers, tests, packages, booking, sample lifecycle, reports |
 | **Anonymous lab report access** | Anyone with token | None | Download report metadata via `reportToken` |
 | **Emergency ambulance** | Patient, Driver, Dispatcher, Admin | Bearer JWT | Request ride, dispatch, live location, driver lifecycle |
@@ -44,7 +51,7 @@ This document describes every **currently exposed** HTTP API in the Health Bridg
 
 ### In database / roadmap (no public routes yet)
 
-Telehealth (on-demand video), standalone payment APIs, notification webhooks, patient/doctor/admin dashboards, authenticated medicine orders. Schema exists for some of these; controllers are not wired in `AppModule` yet.
+**Telehealth** (on-demand emergency video) and a **standalone payment gateway** module (unified intents/webhooks). Schema exists; controllers are not wired in `AppModule` yet.
 
 ---
 
@@ -101,7 +108,18 @@ JWT payload (for debugging only — **do not trust client-side for authorization
 | Token | TTL | Notes |
 |-------|-----|--------|
 | Access | **15 minutes** (`AUTH_ACCESS_TOKEN_TTL`) | Used in `Authorization` header |
-| Refresh | **7 days** | Returned on signup/signin; **no refresh HTTP endpoint is implemented yet** — store securely and plan for re-signin until `/auth/refresh` exists |
+| Refresh | **7 days** | Returned on signup/signin; rotate via `POST /auth/refresh`; revoke all via `POST /auth/logout` |
+
+### Refresh (`POST /auth/refresh`)
+
+- Body: `{ "refreshToken": "<refreshToken>" }`
+- Verifies JWT with `JWT_REFRESH_SECRET`, matches hashed DB row, revokes old token, issues new pair (rotation).
+
+### Logout (`POST /auth/logout`)
+
+- Requires `Authorization: Bearer <accessToken>`
+- Revokes all refresh tokens for the current user.
+- Response: `{ "success": true }`
 
 ### Role-based access
 
@@ -109,9 +127,9 @@ Protected controllers use `JwtAuthGuard` + `RolesGuard`. If the user’s `role` 
 
 | Role | Typical surfaces |
 |------|------------------|
-| `PATIENT` | Lab bookings, ambulance request, appointments, commerce (future) |
-| `DOCTOR` | Appointment availability & schedule |
-| `ADMIN` | Lab catalog ops, ambulance fleet, centers, reports |
+| `PATIENT` | Lab bookings, ambulance, appointments, medicine `orders/me`, dashboards |
+| `DOCTOR` | Appointments, availability, visit notes, prescriptions, dashboard |
+| `ADMIN` | Users, lab catalog, ambulance fleet, e-commerce catalog, delivery status |
 | `DISPATCHER` | Ambulance queue, dispatch, shifts |
 | `DRIVER` | Assigned booking lifecycle, location push |
 
@@ -973,23 +991,19 @@ Lab `reportUrl` values already use this pattern via `APP_URL`.
 
 | Enum | Values |
 |------|--------|
-| `AppointmentStatus` | `SCHEDULED`, `IN_PROGRESS`, `COMPLETED`, `CANCELLED` |
+| `AppointmentStatus` | `SCHEDULED` → `IN_PROGRESS` → `COMPLETED`; or `CANCELLED` from `SCHEDULED` / `IN_PROGRESS` |
+| `PrescriptionStatus` | `ACTIVE`, `COMPLETED`, `EXPIRED`, `CANCELLED` |
+| `DoctorStatus` | `PENDING`, `ACTIVE`, `INACTIVE`, `SUSPENDED` |
 | `DayOfWeek` | `MONDAY` … `SUNDAY` (recurring availability) |
 
 ---
 
 ## Planned but not exposed yet
 
-The following are described in product docs / Prisma schema but **have no controllers** in the current app:
+- **Telehealth** — emergency on-demand video (`TelehealthStatus`, `TelehealthSessionStatus` in schema)
+- **Payment gateway** — unified payment intents / webhooks (lab/e-commerce use local payment fields today)
 
-- **Telehealth** — emergency video (`TelehealthStatus`, `TelehealthSessionStatus` in schema)
-- **Refresh token** — `POST /auth/refresh` (tokens issued on signin but not rotated via API)
-- **Payment gateway** — unified payment intents / webhooks
-- **Notifications** — email queue consumers from client view
-- **Dashboards** — aggregated KPIs for patient / doctor / admin
-- **Authenticated medicine orders** — guest-only checkout today (`orders.userId = null`)
-
-Frontend should gate UI for these behind feature flags until routes appear in `/docs-json`.
+Frontend should gate telehealth/payment UI behind feature flags until routes appear in `/docs-json`.
 
 ---
 
@@ -1012,7 +1026,11 @@ PORT=5000
 APP_URL=http://localhost:5000
 ```
 
-**CORS:** Not explicitly enabled in `main.ts` today. If the browser blocks cross-origin requests, run the API behind the same origin as the frontend dev proxy or add CORS in deployment config.
+**CORS:** Enabled in `main.ts`. Set `ALLOWED_ORIGINS` to a comma-separated list of frontend origins (e.g. `http://localhost:3000,https://app.example.com`). When unset, all origins are allowed with `credentials: true`.
+
+**Request ID:** Every response includes `X-Request-Id` (echo client header or server-generated UUID).
+
+**Health:** `GET /health` returns `{ status, database, redis, timestamp }` for probes.
 
 ---
 
@@ -1021,15 +1039,32 @@ APP_URL=http://localhost:5000
 | Method | Path | Auth |
 |--------|------|------|
 | GET | `/` | — |
+| GET | `/health` | — |
 | POST | `/auth/signup` | — |
 | POST | `/auth/signin` | — |
+| POST | `/auth/refresh` | — |
+| POST | `/auth/logout` | Bearer |
+| GET | `/users/me` | Bearer |
+| PATCH | `/users/me` | Bearer |
+| PATCH | `/users/me/patient-profile` | Bearer (PATIENT) |
+| PATCH | `/users/me/doctor-profile` | Bearer (DOCTOR) |
+| GET | `/users` | Bearer (ADMIN) |
+| PATCH | `/users/:userId/role` | Bearer (ADMIN) |
+| PATCH | `/users/:userId/doctor/approve` | Bearer (ADMIN) |
+| PATCH | `/users/:userId/doctor/suspend` | Bearer (ADMIN) |
 | POST | `/e-commerce/guest-sessions` | — |
 | GET | `/e-commerce/categories` | — |
 | GET | `/e-commerce/medicines` | — |
 | GET | `/e-commerce/cart/:guestSessionId` | — |
 | PUT | `/e-commerce/cart/items` | — |
 | DELETE | `/e-commerce/cart/items/:guestSessionId/:medicineId` | — |
-| POST | `/e-commerce/checkout` | — |
+| POST | `/e-commerce/checkout` | Optional Bearer (links `userId` when PATIENT) |
+| GET | `/e-commerce/orders/me` | Bearer (PATIENT) |
+| PATCH | `/e-commerce/orders/:orderId/delivery-status` | Bearer (ADMIN) |
+| POST | `/e-commerce/categories` | Bearer (ADMIN) |
+| PATCH | `/e-commerce/categories/:id` | Bearer (ADMIN) |
+| POST | `/e-commerce/medicines` | Bearer (ADMIN) |
+| PATCH | `/e-commerce/medicines/:id` | Bearer (ADMIN) |
 | GET | `/e-commerce/orders/:orderId` | — |
 | GET | `/appointments/health-centers` | Bearer |
 | GET | `/appointments/doctors/search` | Bearer |
@@ -1041,6 +1076,20 @@ APP_URL=http://localhost:5000
 | POST | `/appointments/me/doctor/availability` | Bearer |
 | PATCH | `/appointments/me/doctor/availability/:availabilityId` | Bearer |
 | DELETE | `/appointments/me/doctor/availability/:availabilityId` | Bearer |
+| GET | `/appointments/prescriptions/me` | Bearer (PATIENT) |
+| PATCH | `/appointments/:id/cancel` | Bearer |
+| PATCH | `/appointments/:id/start` | Bearer (DOCTOR/ADMIN) |
+| PATCH | `/appointments/:id/complete` | Bearer (DOCTOR/ADMIN) |
+| POST | `/appointments/:id/visit-note` | Bearer (DOCTOR) |
+| GET | `/appointments/:id/visit-note` | Bearer |
+| POST | `/appointments/:id/prescription` | Bearer (DOCTOR) |
+| GET | `/appointments/:id/prescription` | Bearer |
+| GET | `/notifications/preferences` | Bearer |
+| PATCH | `/notifications/preferences` | Bearer |
+| GET | `/notifications/logs` | Bearer |
+| GET | `/dashboard/patient` | Bearer (PATIENT) |
+| GET | `/dashboard/doctor` | Bearer (DOCTOR) |
+| GET | `/dashboard/admin` | Bearer (ADMIN) |
 | GET | `/lab/centers` | Bearer |
 | POST | `/lab/centers` | Bearer |
 | GET | `/lab/centers/:centerId/tests` | Bearer |

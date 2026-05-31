@@ -40,6 +40,12 @@ import {
   UpdateAvailabilityDto,
 } from './dto/appointment.dto';
 import { DoctorSearchHitDto } from './dto/appointment-response.dto';
+import {
+  CancelAppointmentDto,
+  CreatePrescriptionDto,
+  CreateVisitNoteDto,
+  PrescriptionListQueryDto,
+} from './dto/appointment-action.dto';
 
 @ApiTags(APPOINTMENTS_SWAGGER_TAG)
 @ApiBearerAuth()
@@ -94,7 +100,18 @@ export class AppointmentController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @ApiCreatedResponse()
   book(@CurrentUser() user: JwtRequestUser, @Body() dto: BookAppointmentDto) {
-    return this.svc.book(user.id, dto);
+    return this.svc.book(user, dto);
+  }
+
+  @Get('prescriptions/me')
+  @Roles(UserRole.PATIENT)
+  @ApiOperation({ summary: 'List prescriptions for current patient' })
+  @ApiOkResponse()
+  myPrescriptions(
+    @CurrentUser() user: JwtRequestUser,
+    @Query() query: PrescriptionListQueryDto,
+  ) {
+    return this.svc.listMyPrescriptions(user, query);
   }
 
   @Get('me/patient')
@@ -164,5 +181,81 @@ export class AppointmentController {
     @Param('availabilityId', ParseUUIDPipe) availabilityId: string,
   ): Promise<void> {
     await this.svc.deleteDoctorAvailability(user.id, availabilityId);
+  }
+
+  @Patch(':id/cancel')
+  @Roles(UserRole.PATIENT, UserRole.DOCTOR, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Cancel an appointment' })
+  @ApiOkResponse()
+  cancel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtRequestUser,
+    @Body() dto: CancelAppointmentDto,
+  ) {
+    return this.svc.cancelAppointment(id, user, dto);
+  }
+
+  @Patch(':id/start')
+  @Roles(UserRole.DOCTOR, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Mark appointment in progress' })
+  @ApiOkResponse()
+  start(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtRequestUser,
+  ) {
+    return this.svc.startAppointment(id, user);
+  }
+
+  @Patch(':id/complete')
+  @Roles(UserRole.DOCTOR, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Mark appointment completed' })
+  @ApiOkResponse()
+  complete(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtRequestUser,
+  ) {
+    return this.svc.completeAppointment(id, user);
+  }
+
+  @Post(':id/visit-note')
+  @Roles(UserRole.DOCTOR)
+  @ApiCreatedResponse()
+  upsertVisitNote(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtRequestUser,
+    @Body() dto: CreateVisitNoteDto,
+  ) {
+    return this.svc.upsertVisitNote(id, user, dto);
+  }
+
+  @Get(':id/visit-note')
+  @Roles(UserRole.PATIENT, UserRole.DOCTOR, UserRole.ADMIN)
+  @ApiOkResponse()
+  getVisitNote(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtRequestUser,
+  ) {
+    return this.svc.getVisitNote(id, user);
+  }
+
+  @Post(':id/prescription')
+  @Roles(UserRole.DOCTOR)
+  @ApiCreatedResponse()
+  createPrescription(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtRequestUser,
+    @Body() dto: CreatePrescriptionDto,
+  ) {
+    return this.svc.createPrescription(id, user, dto);
+  }
+
+  @Get(':id/prescription')
+  @Roles(UserRole.PATIENT, UserRole.DOCTOR, UserRole.ADMIN)
+  @ApiOkResponse()
+  getPrescription(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtRequestUser,
+  ) {
+    return this.svc.getPrescription(id, user);
   }
 }

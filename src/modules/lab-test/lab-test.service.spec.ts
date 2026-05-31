@@ -14,7 +14,7 @@ import { LabTestService } from './lab-test.service';
 import { LabTestRepository } from './repositories/lab-test.repository';
 import { RedisKeyService } from '../../common/redis/redis-key.service';
 import { StorageService } from '../../common/storage/storage.service';
-import { MailService } from '../../common/mail/mail.service';
+import { NotificationService } from '../notification/notification.service';
 import type { JwtRequestUser } from '../../common/types/jwt-request-user';
 
 // ─── Mock factories ────────────────────────────────────────────────────────────
@@ -65,10 +65,10 @@ function makeStorageService(): jest.Mocked<StorageService> {
   } as unknown as jest.Mocked<StorageService>;
 }
 
-function makeMailService(): jest.Mocked<MailService> {
+function makeNotificationService(): jest.Mocked<NotificationService> {
   return {
-    sendReportReady: jest.fn(),
-  } as unknown as jest.Mocked<MailService>;
+    enqueue: jest.fn().mockResolvedValue(null),
+  } as unknown as jest.Mocked<NotificationService>;
 }
 
 function makePatient(id = 'patient-1'): JwtRequestUser {
@@ -103,14 +103,14 @@ function makeBooking(overrides: Partial<any> = {}): any {
 function buildService(
   repo: jest.Mocked<LabTestRepository>,
   storage: jest.Mocked<StorageService>,
-  mail: jest.Mocked<MailService>,
+  notifications: jest.Mocked<NotificationService>,
 ) {
   const redisKey = makeRedisKeyService();
   // Bypass Redis construction by stubbing env
   const originalRedisUrl = process.env.REDIS_URL;
   delete process.env.REDIS_URL;
 
-  const svc = new LabTestService(repo, redisKey, storage, mail);
+  const svc = new LabTestService(repo, redisKey, storage, notifications);
 
   if (originalRedisUrl !== undefined) {
     process.env.REDIS_URL = originalRedisUrl;
@@ -124,14 +124,14 @@ function buildService(
 describe('LabTestService', () => {
   let repo: jest.Mocked<LabTestRepository>;
   let storage: jest.Mocked<StorageService>;
-  let mail: jest.Mocked<MailService>;
+  let notifications: jest.Mocked<NotificationService>;
   let svc: LabTestService;
 
   beforeEach(() => {
     repo = makeRepo();
     storage = makeStorageService();
-    mail = makeMailService();
-    svc = buildService(repo, storage, mail);
+    notifications = makeNotificationService();
+    svc = buildService(repo, storage, notifications);
   });
 
   // ── createBooking ──────────────────────────────────────────────────────────
@@ -393,7 +393,7 @@ describe('LabTestService', () => {
   // ── deliverReport ──────────────────────────────────────────────────────────
 
   describe('deliverReport', () => {
-    it('calls MailService.sendReportReady and sets bookingStatus=COMPLETED when last report', async () => {
+    it('enqueues report-ready notification and sets bookingStatus=COMPLETED when last report', async () => {
       const report = {
         id: 'report-1',
         bookingId: 'booking-1',
@@ -415,12 +415,7 @@ describe('LabTestService', () => {
 
       await svc.deliverReport('report-1');
 
-      expect(mail.sendReportReady).toHaveBeenCalledWith({
-        to: 'john@test.com',
-        patientName: 'John',
-        centerName: 'Med Center',
-        reportToken: 'token-abc',
-      });
+      expect(notifications.enqueue).toHaveBeenCalled();
       expect(repo.updateBookingStatus).toHaveBeenCalledWith(
         'booking-1',
         TestBookingStatus.COMPLETED,

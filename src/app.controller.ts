@@ -19,4 +19,20 @@ export class AppController {
   getHello(): string {
     return this.appService.getHello();
   }
+
+  @Get('health')
+  @ApiOperation({ summary: 'Liveness and dependency health' })
+  @ApiOkResponse({
+    schema: {
+      example: {
+        status: 'ok',
+        database: 'up',
+        redis: 'up',
+        timestamp: '2026-05-31T00:00:00.000Z',
+      },
+    },
+  })
+  getHealth() {
+    return this.appService.getHealth();
+  }
 }

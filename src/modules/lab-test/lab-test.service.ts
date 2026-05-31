@@ -17,7 +17,8 @@ import Redis from 'ioredis';
 
 import { RedisKeyService } from '../../common/redis/redis-key.service';
 import { StorageService } from '../../common/storage/storage.service';
-import { MailService } from '../../common/mail/mail.service';
+import { NOTIFICATION_JOB_TYPES } from '../notification/constants/notification.constants';
+import { NotificationService } from '../notification/notification.service';
 import type { JwtRequestUser } from '../../common/types/jwt-request-user';
 import { LabTestRepository } from './repositories/lab-test.repository';
 import type { LabReportFile } from './types/lab-test.types';
@@ -51,7 +52,7 @@ export class LabTestService {
     private readonly repo: LabTestRepository,
     private readonly redisKey: RedisKeyService,
     private readonly storage: StorageService,
-    private readonly mail: MailService,
+    private readonly notifications: NotificationService,
   ) {
     const redisUrl = process.env.REDIS_URL;
     if (redisUrl) {
@@ -231,6 +232,16 @@ export class LabTestService {
       );
     }
 
+    void this.notifications.enqueue(NOTIFICATION_JOB_TYPES.LAB_BOOKING_CONFIRMED, {
+      userId: patient.id,
+      recipient: patient.email,
+      subject: 'Lab booking received',
+      data: {
+        bookingId: result.booking.id,
+        centerName: center.name,
+      },
+    });
+
     return result.booking;
   }
 
@@ -408,14 +419,17 @@ export class LabTestService {
       deliveredAt: new Date(),
     });
 
-    // Send email notification
     const patient = report.booking.patient;
     if (patient.email) {
-      await this.mail.sendReportReady({
-        to: patient.email,
-        patientName: `${patient.firstName} ${patient.lastName}`,
-        centerName: report.booking.diagnosticCenter.name,
-        reportToken: report.reportToken,
+      void this.notifications.enqueue(NOTIFICATION_JOB_TYPES.REPORT_READY, {
+        userId: patient.id,
+        recipient: patient.email,
+        subject: 'Your lab report is ready',
+        data: {
+          patientName: `${patient.firstName} ${patient.lastName}`,
+          centerName: report.booking.diagnosticCenter.name,
+          reportToken: report.reportToken,
+        },
       });
     }
 

@@ -240,4 +240,104 @@ export class AppointmentRepository {
       where: { doctorId: doctorProfileId },
     });
   }
+
+  findAppointmentById(id: string) {
+    return this.prisma.appointment.findUnique({
+      where: { id },
+      include: {
+        healthCenter: true,
+        patient: { select: { id: true, firstName: true, lastName: true } },
+        doctor: { select: { id: true, firstName: true, lastName: true } },
+        visitNote: true,
+        prescription: true,
+      },
+    });
+  }
+
+  updateAppointmentStatus(
+    id: string,
+    status: AppointmentStatus,
+    extra?: { cancelledAt?: Date; notes?: string },
+  ) {
+    return this.prisma.appointment.update({
+      where: { id },
+      data: {
+        status,
+        ...(extra?.cancelledAt && { cancelledAt: extra.cancelledAt }),
+        ...(extra?.notes !== undefined && { notes: extra.notes }),
+      },
+      include: { healthCenter: true },
+    });
+  }
+
+  upsertVisitNote(
+    appointmentId: string,
+    data: {
+      diagnosis?: string;
+      treatmentPlan?: string;
+      notes?: string;
+    },
+  ) {
+    return this.prisma.visitNote.upsert({
+      where: { appointmentId },
+      create: { appointmentId, ...data },
+      update: data,
+    });
+  }
+
+  findVisitNote(appointmentId: string) {
+    return this.prisma.visitNote.findUnique({ where: { appointmentId } });
+  }
+
+  createPrescription(data: {
+    appointmentId: string;
+    patientId: string;
+    doctorId: string;
+    medicines: object;
+    notes?: string;
+    issuedAt: Date;
+    expiryDate?: Date;
+  }) {
+    return this.prisma.prescription.create({
+      data: {
+        appointmentId: data.appointmentId,
+        patientId: data.patientId,
+        doctorId: data.doctorId,
+        medicines: data.medicines,
+        notes: data.notes,
+        issuedAt: data.issuedAt,
+        expiryDate: data.expiryDate,
+      },
+    });
+  }
+
+  findPrescriptionByAppointment(appointmentId: string) {
+    return this.prisma.prescription.findUnique({
+      where: { appointmentId },
+    });
+  }
+
+  listPatientPrescriptions(patientId: string, skip: number, take: number) {
+    return Promise.all([
+      this.prisma.prescription.findMany({
+        where: { patientId },
+        orderBy: { issuedAt: 'desc' },
+        skip,
+        take,
+        include: {
+          appointment: {
+            select: {
+              id: true,
+              appointmentDate: true,
+              appointmentTime: true,
+            },
+          },
+          doctor: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+        },
+      }),
+      this.prisma.prescription.count({ where: { patientId } }),
+    ]);
+  }
 }
