@@ -26,6 +26,13 @@ enum AmbulanceBookingStatus {
   CANCELLED
 }
 
+enum DriverStatus {
+  PENDING
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
 model HealthCenter {
   id          String           @id @default(uuid()) @db.Uuid
   name        String           @unique
@@ -41,41 +48,100 @@ model HealthCenter {
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
-  ambulances  Ambulance[]
-  originBookings AmbulanceBooking[] @relation("OriginCenter")
-  destinationBookings AmbulanceBooking[] @relation("DestinationCenter")
+  ambulances           Ambulance[]
+  driverProfiles       DriverProfile[]
+  shifts               AmbulanceShift[]
+  originBookings       AmbulanceBooking[]   @relation("OriginCenter")
+  destinationBookings  AmbulanceBooking[]   @relation("DestinationCenter")
+  doctorAvailabilities DoctorAvailability[]
+  inPersonAppointments Appointment[]        @relation("AppointmentHealthCenter")
 
   @@index([city, state])
   @@map("health_centers")
 }
 
 model Ambulance {
-  id               String               @id @default(uuid()) @db.Uuid
-  healthCenterId   String               @db.Uuid
-  vehicleNumber    String               @unique
-  vehicleType      AmbulanceVehicleType
-  driverName       String
-  driverPhone      String
-  driverLicense    String
-  insuranceNumber  String?
-  status           AmbulanceStatus      @default(AVAILABLE)
-  latitude         Float?
-  longitude        Float?
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
+  id              String               @id @default(uuid()) @db.Uuid
+  healthCenterId  String               @db.Uuid
+  vehicleNumber   String               @unique
+  vehicleType     AmbulanceVehicleType
+  // Legacy embedded driver fields kept nullable for backward compatibility.
+  // Primary driver assignment is managed via DriverProfile + AmbulanceShift.
+  driverName      String?
+  driverPhone     String?
+  driverLicense   String?
+  insuranceNumber String?
+  status          AmbulanceStatus      @default(AVAILABLE)
+  latitude        Float?
+  longitude       Float?
+  // Optimistic locking counter – incremented on every status transition.
+  version         Int                  @default(0)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
 
-  healthCenter     HealthCenter         @relation(fields: [healthCenterId], references: [id])
-  bookings         AmbulanceBooking[]
-  locationLogs     AmbulanceLocationLog[]
+  healthCenter        HealthCenter          @relation(fields: [healthCenterId], references: [id])
+  bookings            AmbulanceBooking[]
+  locationLogs        AmbulanceLocationLog[]
+  shifts              AmbulanceShift[]
+  dispatchAssignments DispatchAssignment[]
 
   @@index([status])
+  @@index([healthCenterId, status])
   @@map("ambulances")
+}
+
+model DriverProfile {
+  id                String       @id @default(uuid()) @db.Uuid
+  userId            String       @unique @db.Uuid
+  healthCenterId    String       @db.Uuid
+  licenseNumber     String       @unique
+  licenseExpiryDate DateTime
+  isVerified        Boolean      @default(false)
+  verifiedAt        DateTime?
+  status            DriverStatus @default(PENDING)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  user                User                 @relation(fields: [userId], references: [id])
+  healthCenter        HealthCenter         @relation(fields: [healthCenterId], references: [id])
+  shifts              AmbulanceShift[]
+  bookingAssignments  AmbulanceBooking[]
+  dispatchAssignments DispatchAssignment[]
+
+  @@index([status])
+  @@index([healthCenterId, status])
+  @@map("driver_profiles")
+}
+
+model AmbulanceShift {
+  id             String        @id @default(uuid()) @db.Uuid
+  driverId       String        @db.Uuid
+  ambulanceId    String        @db.Uuid
+  healthCenterId String        @db.Uuid
+  shiftStart     DateTime
+  shiftEnd       DateTime?
+  isActive       Boolean       @default(true)
+  endedAt        DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  driver       DriverProfile @relation(fields: [driverId], references: [id])
+  ambulance    Ambulance     @relation(fields: [ambulanceId], references: [id])
+  healthCenter HealthCenter  @relation(fields: [healthCenterId], references: [id])
+
+  @@index([driverId, isActive])
+  @@index([ambulanceId, isActive])
+  @@index([healthCenterId, isActive])
+  @@map("ambulance_shifts")
 }
 
 model AmbulanceBooking {
   id                    String                 @id @default(uuid()) @db.Uuid
   patientId             String                 @db.Uuid
-  ambulanceId           String                 @db.Uuid
+  // Nullable: set by dispatch engine after assignment. Null while status=REQUESTED.
+  ambulanceId           String?                @db.Uuid
+  driverId              String?                @db.Uuid
+  dispatchedBy          String?                @db.Uuid
   paymentId             String?                @unique @db.Uuid
   originCenterId        String?                @db.Uuid
   destinationCenterId   String?                @db.Uuid
@@ -85,6 +151,7 @@ model AmbulanceBooking {
   pickupLongitude       Float
   destinationLatitude   Float
   destinationLongitude  Float
+  vehicleTypeRequired   AmbulanceVehicleType?
   estimatedDistance     Float?
   estimatedFare         Decimal                @db.Decimal(12, 2)
   actualFare            Decimal?               @db.Decimal(12, 2)
@@ -92,38 +159,67 @@ model AmbulanceBooking {
   emergencyType         String?
   patientCondition      String?
   specialRequirements   String?
+  cancelReason          String?
   bookedAt              DateTime
   acceptedAt            DateTime?
   arrivedAt             DateTime?
   startedAt             DateTime?
   completedAt           DateTime?
+  cancelledAt           DateTime?
   createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
 
-  patient               User                   @relation(fields: [patientId], references: [id])
-  ambulance             Ambulance              @relation(fields: [ambulanceId], references: [id])
-  payment               Payment?               @relation(fields: [paymentId], references: [id])
-  originCenter          HealthCenter?          @relation("OriginCenter", fields: [originCenterId], references: [id])
-  destinationCenter     HealthCenter?          @relation("DestinationCenter", fields: [destinationCenterId], references: [id])
-  locationLogs          AmbulanceLocationLog[]
+  patient             User                   @relation(fields: [patientId], references: [id])
+  ambulance           Ambulance?             @relation(fields: [ambulanceId], references: [id])
+  driver              DriverProfile?         @relation(fields: [driverId], references: [id])
+  payment             Payment?               @relation(fields: [paymentId], references: [id])
+  originCenter        HealthCenter?          @relation("OriginCenter", fields: [originCenterId], references: [id])
+  destinationCenter   HealthCenter?          @relation("DestinationCenter", fields: [destinationCenterId], references: [id])
+  locationLogs        AmbulanceLocationLog[]
+  dispatchAssignment  DispatchAssignment?
 
   @@index([patientId, bookedAt])
   @@index([status])
+  @@index([ambulanceId, status])
+  @@index([driverId, status])
   @@map("ambulance_bookings")
 }
 
-model AmbulanceLocationLog {
-  id                  String            @id @default(uuid()) @db.Uuid
-  ambulanceBookingId  String            @db.Uuid
-  ambulanceId         String            @db.Uuid
-  latitude            Float
-  longitude           Float
-  accuracy            Float?
-  address             String?
-  recordedAt          DateTime
-  createdAt           DateTime          @default(now())
+model DispatchAssignment {
+  id           String           @id @default(uuid()) @db.Uuid
+  bookingId    String           @unique @db.Uuid
+  dispatcherId String           @db.Uuid
+  ambulanceId  String           @db.Uuid
+  driverId     String           @db.Uuid
+  assignedAt   DateTime         @default(now())
+  notes        String?
+  priority     Int              @default(0)
+  createdAt    DateTime         @default(now())
 
-  ambulanceBooking    AmbulanceBooking  @relation(fields: [ambulanceBookingId], references: [id])
-  ambulance           Ambulance         @relation(fields: [ambulanceId], references: [id])
+  booking    AmbulanceBooking @relation(fields: [bookingId], references: [id])
+  dispatcher User             @relation("DispatcherAssignments", fields: [dispatcherId], references: [id])
+  ambulance  Ambulance        @relation(fields: [ambulanceId], references: [id])
+  driver     DriverProfile    @relation(fields: [driverId], references: [id])
+
+  @@index([dispatcherId])
+  @@index([ambulanceId])
+  @@index([driverId])
+  @@map("dispatch_assignments")
+}
+
+model AmbulanceLocationLog {
+  id                 String           @id @default(uuid()) @db.Uuid
+  ambulanceBookingId String           @db.Uuid
+  ambulanceId        String           @db.Uuid
+  latitude           Float
+  longitude          Float
+  accuracy           Float?
+  address            String?
+  recordedAt         DateTime
+  createdAt          DateTime         @default(now())
+
+  ambulanceBooking AmbulanceBooking @relation(fields: [ambulanceBookingId], references: [id])
+  ambulance        Ambulance        @relation(fields: [ambulanceId], references: [id])
 
   @@index([ambulanceBookingId, recordedAt])
   @@map("ambulance_location_logs")

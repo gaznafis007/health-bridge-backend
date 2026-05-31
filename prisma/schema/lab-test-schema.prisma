@@ -29,6 +29,13 @@ enum ReportStatus {
   ARCHIVED
 }
 
+enum TestBookingStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
 model DiagnosticCenter {
   id              String        @id @default(uuid()) @db.Uuid
   name            String        @unique
@@ -119,9 +126,13 @@ model TestBooking {
   sampleCollectionDate  DateTime
   sampleCollectionTime  String
   sampleStatus          SampleStatus      @default(PENDING)
+  bookingStatus         TestBookingStatus @default(PENDING_PAYMENT)
   totalAmount           Decimal           @db.Decimal(12, 2)
   paymentStatus         TestPaymentStatus @default(PENDING)
   notes                 String?
+  cancelledAt           DateTime?
+  cancellationReason    String?
+  sampleCollectedAt     DateTime?
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt
   completedAt           DateTime?
@@ -164,6 +175,7 @@ model TestReport {
   generatedAt    DateTime?
   deliveredAt    DateTime?
   createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   booking        TestBooking  @relation(fields: [bookingId], references: [id])
   test           LabTest?     @relation(fields: [testId], references: [id])

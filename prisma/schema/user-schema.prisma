@@ -2,6 +2,8 @@ enum UserRole {
   PATIENT
   DOCTOR
   ADMIN
+  DISPATCHER
+  DRIVER
 }
 
 enum Gender {
@@ -40,6 +42,8 @@ model User {
   orders                    Order[]
   testBookings              TestBooking[]
   ambulanceBookings         AmbulanceBooking[]
+  driverProfile             DriverProfile?
+  dispatchedAssignments     DispatchAssignment[]    @relation("DispatcherAssignments")
   payments                  Payment[]
   refunds                   Refund[]
   paymentMethods            PaymentMethod[]
@@ -89,8 +93,8 @@ model DoctorProfile {
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
-  user                User                 @relation(fields: [userId], references: [id])
-  availabilities      DoctorAvailability[]
+  user                  User                     @relation(fields: [userId], references: [id])
+  availabilities        DoctorAvailability[]
 
   @@index([status])
   @@map("doctor_profiles")
@@ -104,21 +108,25 @@ enum DoctorStatus {
 }
 
 model DoctorAvailability {
-  id                  String     @id @default(uuid()) @db.Uuid
-  doctorId            String     @db.Uuid
+  id                  String       @id @default(uuid()) @db.Uuid
+  doctorId            String       @db.Uuid
+  healthCenterId      String       @db.Uuid
   dayOfWeek           DayOfWeek?
   startTime           String
   endTime             String
   slotDurationMinutes Int
-  isRecurring         Boolean    @default(true)
+  isRecurring         Boolean      @default(true)
   specificDate        DateTime?
-  createdAt           DateTime   @default(now())
-  updatedAt           DateTime   @updatedAt
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
 
-  doctor              DoctorProfile @relation(fields: [doctorId], references: [id])
+  doctor               DoctorProfile @relation(fields: [doctorId], references: [id])
+  healthCenter         HealthCenter  @relation(fields: [healthCenterId], references: [id])
+  appointmentsAsRule   Appointment[] @relation("AppointmentAvailabilityRule")
 
   @@index([doctorId, dayOfWeek])
   @@index([doctorId, specificDate])
+  @@index([healthCenterId])
   @@map("doctor_availability")
 }
 

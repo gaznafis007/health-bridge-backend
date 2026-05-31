@@ -26,7 +26,9 @@ Configure via env:
 | Pattern | TTL | Purpose |
 | --- | --- | --- |
 | `cart:{guest_session_id}` | 7 days | Guest cart items |
-| `ambulance:loc:{ambulance_id}` | 60s | Real-time ambulance position |
+| `ambulance:loc:{ambulance_id}` | 60s | Real-time ambulance position (latest heartbeat) |
+| `ambulance:booking:{booking_id}:loc` | 60s | Latest location snapshot scoped to a booking |
+| `ambulance:active_bookings` | managed | Set of active booking IDs for dispatcher queues |
 | `rate:ip:{ip}:{endpoint}` | 1 min | IP-based rate limiting |
 | `rate:user:{user_id}:{endpoint}` | 1 min | User-based rate limiting |
 | `otp:{phone_hash}` | 5 min | OTP verification state |
@@ -76,6 +78,7 @@ await redis.set(key, JSON.stringify(cart), 'EX', 60 * 60 * 24 * 7);
 
 - cart: `604800`
 - ambulance location: `60`
+- ambulance booking location: `60`
 - rate limit: `60`
 - otp: `300`
 - otp attempts: `900`
