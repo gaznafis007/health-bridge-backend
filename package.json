@@ -8,17 +8,22 @@
   "scripts": {
     "build": "yarn prisma:generate && nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "start:prod": "node dist/main",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "prisma:generate": "prisma generate --schema prisma/schema"
+    "prisma:generate": "prisma generate --schema prisma/schema",
+    "db:seed": "ts-node -P tsconfig.seed.json prisma/seed.ts"
+  },
+  "prisma": {
+    "seed": "ts-node -P tsconfig.seed.json prisma/seed.ts",
+    "schema": "prisma/schema"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1045.0",
