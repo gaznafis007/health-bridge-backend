@@ -148,25 +148,45 @@ export class CreateBookingDto {
   @IsString() @IsNotEmpty() @MaxLength(500)
   destinationAddress: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional({
+    description:
+      'Optional when pickupAddress is provided; server geocodes address if omitted',
+    example: 23.7461,
+  })
+  @IsOptional()
   @IsLatitude()
   @Type(() => Number)
-  pickupLatitude: number;
+  pickupLatitude?: number;
 
-  @ApiProperty()
+  @ApiPropertyOptional({
+    description:
+      'Optional when pickupAddress is provided; server geocodes address if omitted',
+    example: 90.3742,
+  })
+  @IsOptional()
   @IsLongitude()
   @Type(() => Number)
-  pickupLongitude: number;
+  pickupLongitude?: number;
 
-  @ApiProperty()
+  @ApiPropertyOptional({
+    description:
+      'Optional when destinationAddress or destinationCenterId is provided',
+    example: 23.7925,
+  })
+  @IsOptional()
   @IsLatitude()
   @Type(() => Number)
-  destinationLatitude: number;
+  destinationLatitude?: number;
 
-  @ApiProperty()
+  @ApiPropertyOptional({
+    description:
+      'Optional when destinationAddress or destinationCenterId is provided; health center overrides client coords',
+    example: 90.4078,
+  })
+  @IsOptional()
   @IsLongitude()
   @Type(() => Number)
-  destinationLongitude: number;
+  destinationLongitude?: number;
 
   @ApiPropertyOptional({ enum: AmbulanceVehicleType })
   @IsOptional() @IsEnum(AmbulanceVehicleType)

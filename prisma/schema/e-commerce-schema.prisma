@@ -96,6 +96,7 @@ model Order {
 
   @@index([userId, createdAt])
   @@index([guestSessionId])
+  @@index([deliveryPhone, createdAt])
   @@map("orders")
 }
 

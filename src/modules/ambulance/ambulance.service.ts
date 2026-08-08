@@ -45,10 +45,9 @@ import {
   AMBULANCE_IDEMPOTENCY_TTL_S,
   AMBULANCE_LOCATION_TTL_S,
   BOOKING_TRANSITIONS,
-  FARE_BASE_BDT,
-  FARE_PER_KM_BDT,
   TERMINAL_STATUSES,
 } from './constants/ambulance.constants';
+import { BookingCoordinateResolver } from './utils/booking-coordinate.resolver';
 
 @Injectable()
 export class AmbulanceService implements OnModuleDestroy {
@@ -60,6 +59,7 @@ export class AmbulanceService implements OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly redisKey: RedisKeyService,
     private readonly notifications: NotificationService,
+    private readonly coordinateResolver: BookingCoordinateResolver,
   ) {
     const redisUrl = process.env.REDIS_URL;
     this.redis = redisUrl
@@ -234,24 +234,20 @@ export class AmbulanceService implements OnModuleDestroy {
     // Guardrail: at least one health center must be referenced
     await this.enforceHealthCenterGuardrail(dto.originCenterId, dto.destinationCenterId);
 
-    const distKm = this.haversineKm(
-      dto.pickupLatitude,
-      dto.pickupLongitude,
-      dto.destinationLatitude,
-      dto.destinationLongitude,
-    );
+    const coords = await this.coordinateResolver.resolve(dto, patient.id);
+    const distKm = this.coordinateResolver.estimateFareKm(coords);
     const estimatedFare = new Prisma.Decimal(
-      FARE_BASE_BDT + distKm * FARE_PER_KM_BDT,
+      this.coordinateResolver.estimateFareAmount(distKm),
     );
 
     const booking = await this.repo.createBooking({
       patientId:            patient.id,
       pickupAddress:        dto.pickupAddress,
       destinationAddress:   dto.destinationAddress,
-      pickupLatitude:       dto.pickupLatitude,
-      pickupLongitude:      dto.pickupLongitude,
-      destinationLatitude:  dto.destinationLatitude,
-      destinationLongitude: dto.destinationLongitude,
+      pickupLatitude:       coords.pickupLatitude,
+      pickupLongitude:      coords.pickupLongitude,
+      destinationLatitude:  coords.destinationLatitude,
+      destinationLongitude: coords.destinationLongitude,
       vehicleTypeRequired:  dto.vehicleTypeRequired,
       estimatedDistance:    distKm,
       estimatedFare,
@@ -264,7 +260,7 @@ export class AmbulanceService implements OnModuleDestroy {
     });
 
     // Auto-dispatch: try to find nearest available ambulance immediately
-    await this.tryAutoDispatch(booking.id, dto);
+    await this.tryAutoDispatch(booking.id, dto, coords);
 
     const result = await this.repo.findBookingById(booking.id);
 
@@ -598,6 +594,10 @@ export class AmbulanceService implements OnModuleDestroy {
   private async tryAutoDispatch(
     bookingId: string,
     dto: CreateBookingDto,
+    coords: {
+      pickupLatitude: number;
+      pickupLongitude: number;
+    },
   ): Promise<void> {
     try {
       const candidates = await this.repo.findDispatchCandidates({
@@ -609,8 +609,8 @@ export class AmbulanceService implements OnModuleDestroy {
 
       const ranked = this.rankCandidates(
         candidates,
-        dto.pickupLatitude,
-        dto.pickupLongitude,
+        coords.pickupLatitude,
+        coords.pickupLongitude,
       );
 
       const best = ranked[0];

@@ -4,6 +4,8 @@ import { AmbulanceService } from './ambulance.service';
 import { AmbulanceRepository } from './repositories/ambulance.repository';
 import { RedisKeyService } from '../../common/redis/redis-key.service';
 import { PrismaService } from '../../database/prisma.service';
+import { BookingCoordinateResolver } from './utils/booking-coordinate.resolver';
+import { NotificationService } from '../notification/notification.service';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -57,10 +59,34 @@ function makeRedisKey(): jest.Mocked<RedisKeyService> {
   } as unknown as jest.Mocked<RedisKeyService>;
 }
 
+function makeCoordinateResolver(): jest.Mocked<
+  Pick<
+    BookingCoordinateResolver,
+    'resolve' | 'estimateFareKm' | 'estimateFareAmount'
+  >
+> {
+  return {
+    resolve: jest.fn().mockResolvedValue({
+      pickupLatitude: 23.8,
+      pickupLongitude: 90.4,
+      destinationLatitude: 23.9,
+      destinationLongitude: 90.5,
+    }),
+    estimateFareKm: jest.fn().mockReturnValue(2),
+    estimateFareAmount: jest.fn().mockReturnValue(240),
+  };
+}
+
+function makeNotifications(): jest.Mocked<Pick<NotificationService, 'enqueue'>> {
+  return { enqueue: jest.fn().mockResolvedValue(undefined) };
+}
+
 function makeService(
   repo = makeRepo(),
   prisma = makePrisma(),
   redisKey = makeRedisKey(),
+  coordinateResolver = makeCoordinateResolver(),
+  notifications = makeNotifications(),
 ): AmbulanceService {
   // Temporarily override REDIS_URL so no real Redis connection is made
   delete process.env.REDIS_URL;
@@ -68,6 +94,8 @@ function makeService(
     repo,
     prisma as unknown as PrismaService,
     redisKey,
+    notifications as unknown as NotificationService,
+    coordinateResolver as unknown as BookingCoordinateResolver,
   );
 }
 

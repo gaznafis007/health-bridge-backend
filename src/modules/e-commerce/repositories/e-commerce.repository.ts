@@ -51,38 +51,56 @@ export class ECommerceRepository {
     search?: string;
     requiresPrescription?: boolean;
     inStockOnly: boolean;
+    skip: number;
+    take: number;
   }) {
-    return this.prisma.medicine.findMany({
-      where: {
-        status: MedicineStatus.ACTIVE,
-        categoryId: filters.categoryId,
-        requiresPrescription: filters.requiresPrescription,
-        ...(filters.inStockOnly ? { stockQuantity: { gt: 0 } } : {}),
-        ...(filters.search
-          ? {
-              OR: [
-                { name: { contains: filters.search, mode: 'insensitive' } },
-                {
-                  genericName: {
-                    contains: filters.search,
-                    mode: 'insensitive',
-                  },
+    const where = this.buildMedicineWhere(filters);
+
+    return Promise.all([
+      this.prisma.medicine.findMany({
+        where,
+        include: {
+          category: true,
+        },
+        orderBy: [{ stockQuantity: 'desc' }, { name: 'asc' }],
+        skip: filters.skip,
+        take: filters.take,
+      }),
+      this.prisma.medicine.count({ where }),
+    ]);
+  }
+
+  private buildMedicineWhere(filters: {
+    categoryId?: string;
+    search?: string;
+    requiresPrescription?: boolean;
+    inStockOnly: boolean;
+  }): Prisma.MedicineWhereInput {
+    return {
+      status: MedicineStatus.ACTIVE,
+      categoryId: filters.categoryId,
+      requiresPrescription: filters.requiresPrescription,
+      ...(filters.inStockOnly ? { stockQuantity: { gt: 0 } } : {}),
+      ...(filters.search
+        ? {
+            OR: [
+              { name: { contains: filters.search, mode: 'insensitive' } },
+              {
+                genericName: {
+                  contains: filters.search,
+                  mode: 'insensitive',
                 },
-                {
-                  manufacturer: {
-                    contains: filters.search,
-                    mode: 'insensitive',
-                  },
+              },
+              {
+                manufacturer: {
+                  contains: filters.search,
+                  mode: 'insensitive',
                 },
-              ],
-            }
-          : {}),
-      },
-      include: {
-        category: true,
-      },
-      orderBy: [{ stockQuantity: 'desc' }, { name: 'asc' }],
-    });
+              },
+            ],
+          }
+        : {}),
+    };
   }
 
   createGuestSession(data: {
@@ -272,5 +290,64 @@ export class ECommerceRepository {
       }),
       this.prisma.order.count({ where: { userId } }),
     ]);
+  }
+
+  listOrdersByDeliveryPhone(deliveryPhone: string, skip: number, take: number) {
+    return Promise.all([
+      this.prisma.order.findMany({
+        where: { deliveryPhone },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+        include: { items: { include: { medicine: true } } },
+      }),
+      this.prisma.order.count({ where: { deliveryPhone } }),
+    ]);
+  }
+
+  listOrdersForAdmin(filters: {
+    email?: string;
+    phone?: string;
+    skip: number;
+    take: number;
+  }) {
+    const where = this.buildAdminOrderWhere(filters);
+
+    return Promise.all([
+      this.prisma.order.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: filters.skip,
+        take: filters.take,
+        include: {
+          items: { include: { medicine: true } },
+          user: { select: { email: true } },
+        },
+      }),
+      this.prisma.order.count({ where }),
+    ]);
+  }
+
+  private buildAdminOrderWhere(filters: {
+    email?: string;
+    phone?: string;
+  }): Prisma.OrderWhereInput {
+    const conditions: Prisma.OrderWhereInput[] = [];
+
+    if (filters.email) {
+      conditions.push({
+        user: {
+          email: { contains: filters.email, mode: 'insensitive' },
+        },
+      });
+    }
+
+    if (filters.phone) {
+      conditions.push({
+        deliveryPhone: { contains: filters.phone },
+      });
+    }
+
+    return conditions.length > 0 ? { AND: conditions } : {};
   }
 }
