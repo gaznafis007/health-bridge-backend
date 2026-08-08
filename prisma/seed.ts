@@ -4,12 +4,19 @@ import { seedUsers } from './seed/users.seed';
 import { seedLab } from './seed/lab.seed';
 import { seedEcommerce } from './seed/ecommerce.seed';
 import { seedAmbulances } from './seed/ambulance.seed';
-import { CREDENTIALS, IDS } from './seed/ids';
+import { CREDENTIALS } from './seed/ids';
 
 async function main() {
   console.log('Seeding Health Bridge database...\n');
 
-  const { hospital, clinic, centralLab, northLab } = await seedFacilities();
+  const {
+    hospital,
+    uttaraHospital,
+    mirpurClinic,
+    healthCenters,
+    centralLab,
+    northLab,
+  } = await seedFacilities();
   console.log('  Facilities seeded');
 
   await seedUsers(hospital.id);
@@ -21,7 +28,11 @@ async function main() {
   await seedEcommerce();
   console.log('  Medicine catalog seeded');
 
-  await seedAmbulances(hospital.id);
+  await seedAmbulances({
+    hospitalId: hospital.id,
+    uttaraHospitalId: uttaraHospital.id,
+    mirpurClinicId: mirpurClinic.id,
+  });
   console.log('  Ambulances seeded');
 
   console.log('\n========================================');
@@ -47,12 +58,14 @@ async function main() {
     );
   }
 
-  console.log('\nKey facility IDs:');
-  console.log(`  Hospital:          ${hospital.name} (${hospital.id})`);
-  console.log(`  Clinic:            ${clinic.name} (${clinic.id})`);
-  console.log(`  Central Lab:       ${centralLab.name} (${centralLab.id})`);
-  console.log(`  North Lab:         ${northLab.name} (${northLab.id})`);
-  console.log(`  Hospital (fixed):  ${IDS.healthCenter.hospital}`);
+  console.log('\nHealth centers (for ambulance origin/destination):');
+  for (const center of healthCenters) {
+    console.log(`  - ${center.name} (${center.id}) [${center.type}]`);
+  }
+
+  console.log('\nDiagnostic centers:');
+  console.log(`  - ${centralLab.name} (${centralLab.id})`);
+  console.log(`  - ${northLab.name} (${northLab.id})`);
 
   console.log('\nSeed completed successfully.');
 }
