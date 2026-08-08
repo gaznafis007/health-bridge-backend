@@ -37,6 +37,7 @@ describe('ECommerceService', () => {
             checkoutOrder: jest.fn(),
             findOrderById: jest.fn(),
             listOrdersByDeliveryPhone: jest.fn(),
+            listOrdersForAdmin: jest.fn(),
           },
         },
         {
@@ -290,5 +291,55 @@ describe('ECommerceService', () => {
         'f8de4c23-4a58-405f-ae0f-0de82a4f65cb',
       ),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('returns paginated admin orders with email and phone filters', async () => {
+    repository.listOrdersForAdmin.mockResolvedValue([
+      [
+        {
+          id: 'f8de4c23-4a58-405f-ae0f-0de82a4f65cb',
+          userId: 'patient-id',
+          guestSessionId: guestSession.sessionId,
+          totalAmount: new Prisma.Decimal('25.00'),
+          discountAmount: new Prisma.Decimal('0.00'),
+          taxAmount: new Prisma.Decimal('0.00'),
+          finalAmount: new Prisma.Decimal('25.00'),
+          paymentMethod: OrderPaymentMethod.CASH,
+          paymentStatus: OrderPaymentStatus.PENDING_CASH,
+          deliveryStatus: 'PENDING',
+          deliveryAddress: 'House 10, Dhaka',
+          deliveryPhone: '+8801700000000',
+          createdAt: new Date('2026-05-08T10:00:00.000Z'),
+          user: { email: 'patient1@healthbridge.dev' },
+          items: [
+            {
+              medicineId: '1fca6552-e2b2-4325-a45f-81418ab4a7d0',
+              quantity: 2,
+              unitPrice: new Prisma.Decimal('12.50'),
+              totalPrice: new Prisma.Decimal('25.00'),
+              medicine: { name: 'Napa' },
+            },
+          ],
+        },
+      ],
+      1,
+    ] as never);
+
+    const result = await service.listAdminOrders({
+      email: 'patient1',
+      phone: '8801700',
+      skip: 0,
+      take: 20,
+    });
+
+    expect(repository.listOrdersForAdmin).toHaveBeenCalledWith({
+      email: 'patient1',
+      phone: '8801700',
+      skip: 0,
+      take: 20,
+    });
+    expect(result.total).toBe(1);
+    expect(result.items[0].customerEmail).toBe('patient1@healthbridge.dev');
+    expect(result.items[0].deliveryPhone).toBe('+8801700000000');
   });
 });

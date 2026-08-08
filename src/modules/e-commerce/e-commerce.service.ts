@@ -24,6 +24,8 @@ import { GuestSessionResponseDto } from './dto/guest-session-response.dto';
 import { ListMedicinesQueryDto } from './dto/list-medicines-query.dto';
 import { MedicineCategoryDto } from './dto/medicine-category.dto';
 import { PaginatedMedicinesResponseDto } from './dto/paginated-medicines-response.dto';
+import { AdminListOrdersQueryDto } from './dto/admin-list-orders-query.dto';
+import { AdminPaginatedOrdersResponseDto } from './dto/admin-order-response.dto';
 import { PaginatedOrdersResponseDto } from './dto/paginated-orders-response.dto';
 import { OrderResponseDto } from './dto/order-response.dto';
 import { TrackOrdersByPhoneQueryDto } from './dto/track-orders-by-phone-query.dto';
@@ -314,6 +316,29 @@ export class ECommerceService {
     return this.mapOrder(order);
   }
 
+  async listAdminOrders(
+    query: AdminListOrdersQueryDto,
+  ): Promise<AdminPaginatedOrdersResponseDto> {
+    const skip = query.skip ?? 0;
+    const take = query.take ?? 20;
+    const email = query.email?.trim();
+    const phone = query.phone?.trim();
+
+    const [orders, total] = await this.ecommerceRepository.listOrdersForAdmin({
+      email: email || undefined,
+      phone: phone || undefined,
+      skip,
+      take,
+    });
+
+    return {
+      items: orders.map((order) => this.mapAdminOrder(order)),
+      total,
+      skip,
+      take,
+    };
+  }
+
   async updateDeliveryStatus(orderId: string, dto: UpdateDeliveryStatusDto) {
     const order = await this.ecommerceRepository.findOrderById(orderId);
     if (!order) {
@@ -528,6 +553,35 @@ export class ECommerceService {
         unitPrice: this.formatMoney(item.unitPrice),
         totalPrice: this.formatMoney(item.totalPrice),
       })),
+    };
+  }
+
+  private mapAdminOrder(order: {
+    id: string;
+    userId: string | null;
+    guestSessionId: string | null;
+    totalAmount: Prisma.Decimal;
+    discountAmount: Prisma.Decimal;
+    taxAmount: Prisma.Decimal;
+    finalAmount: Prisma.Decimal;
+    paymentMethod: string;
+    paymentStatus: string;
+    deliveryStatus: string;
+    deliveryAddress: string;
+    deliveryPhone: string;
+    createdAt: Date;
+    user: { email: string } | null;
+    items: Array<{
+      medicineId: string;
+      quantity: number;
+      unitPrice: Prisma.Decimal;
+      totalPrice: Prisma.Decimal;
+      medicine: { name: string };
+    }>;
+  }) {
+    return {
+      ...this.mapOrder(order),
+      customerEmail: order.user?.email ?? null,
     };
   }
 

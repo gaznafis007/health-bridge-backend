@@ -1,6 +1,8 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
+import { JwtAuthGuard } from '../src/common/guards/jwt-auth.guard';
+import { RolesGuard } from '../src/common/guards/roles.guard';
 import { ECommerceController } from '../src/modules/e-commerce/e-commerce.controller';
 import { ECommerceService } from '../src/modules/e-commerce/e-commerce.service';
 
@@ -38,6 +40,7 @@ describe('ECommerceController (e2e)', () => {
     | 'checkout'
     | 'getOrder'
     | 'trackOrdersByPhone'
+    | 'listAdminOrders'
   > = {
     createGuestSession: jest.fn(() =>
       Promise.resolve({
@@ -103,6 +106,32 @@ describe('ECommerceController (e2e)', () => {
         take: 20,
       }),
     ),
+    listAdminOrders: jest.fn(() =>
+      Promise.resolve({
+        items: [
+          {
+            id: 'f8de4c23-4a58-405f-ae0f-0de82a4f65cb',
+            userId: '00000000-0000-4000-8000-000000000105',
+            guestSessionId: '8e42015a-42d8-4d1a-bf85-8ce120f1b5cb',
+            totalAmount: '25.00',
+            discountAmount: '0.00',
+            taxAmount: '0.00',
+            finalAmount: '25.00',
+            paymentMethod: 'CASH',
+            paymentStatus: 'PENDING_CASH',
+            deliveryStatus: 'PENDING',
+            deliveryAddress: 'House 10, Dhaka',
+            deliveryPhone: '+8801700000000',
+            customerEmail: 'patient1@healthbridge.dev',
+            createdAt: '2026-05-08T10:00:00.000Z',
+            items: [],
+          },
+        ],
+        total: 1,
+        skip: 0,
+        take: 20,
+      }),
+    ),
   };
 
   beforeAll(async () => {
@@ -114,7 +143,12 @@ describe('ECommerceController (e2e)', () => {
           useValue: ecommerceServiceMock,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(RolesGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     app = moduleFixture.createNestApplication();
     await app.init();
@@ -188,5 +222,25 @@ describe('ECommerceController (e2e)', () => {
       .get('/e-commerce/orders/by-phone')
       .query({ deliveryPhone: 'invalid' })
       .expect(400);
+  });
+
+  it('/e-commerce/admin/orders (GET) should return paginated admin orders', async () => {
+    const res = await request(
+      app.getHttpServer() as Parameters<typeof request>[0],
+    )
+      .get('/e-commerce/admin/orders')
+      .query({ email: 'patient1', phone: '8801700', skip: 0, take: 20 })
+      .expect(200);
+
+    expect(res.body.total).toBe(1);
+    expect(res.body.items[0].customerEmail).toBe('patient1@healthbridge.dev');
+    expect(ecommerceServiceMock.listAdminOrders).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: 'patient1',
+        phone: '8801700',
+        skip: 0,
+        take: 20,
+      }),
+    );
   });
 });

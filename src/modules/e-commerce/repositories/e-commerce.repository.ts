@@ -304,4 +304,50 @@ export class ECommerceRepository {
       this.prisma.order.count({ where: { deliveryPhone } }),
     ]);
   }
+
+  listOrdersForAdmin(filters: {
+    email?: string;
+    phone?: string;
+    skip: number;
+    take: number;
+  }) {
+    const where = this.buildAdminOrderWhere(filters);
+
+    return Promise.all([
+      this.prisma.order.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: filters.skip,
+        take: filters.take,
+        include: {
+          items: { include: { medicine: true } },
+          user: { select: { email: true } },
+        },
+      }),
+      this.prisma.order.count({ where }),
+    ]);
+  }
+
+  private buildAdminOrderWhere(filters: {
+    email?: string;
+    phone?: string;
+  }): Prisma.OrderWhereInput {
+    const conditions: Prisma.OrderWhereInput[] = [];
+
+    if (filters.email) {
+      conditions.push({
+        user: {
+          email: { contains: filters.email, mode: 'insensitive' },
+        },
+      });
+    }
+
+    if (filters.phone) {
+      conditions.push({
+        deliveryPhone: { contains: filters.phone },
+      });
+    }
+
+    return conditions.length > 0 ? { AND: conditions } : {};
+  }
 }

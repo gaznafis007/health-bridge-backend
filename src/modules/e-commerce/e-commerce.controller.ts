@@ -68,6 +68,11 @@ import {
   UpdateDeliveryStatusDto,
   UpdateMedicineDto,
 } from './dto/admin-catalog.dto';
+import {
+  AdminListOrdersQueryDto,
+  adminListOrdersQuerySchema,
+} from './dto/admin-list-orders-query.dto';
+import { AdminPaginatedOrdersResponseDto } from './dto/admin-order-response.dto';
 import { ECommerceService } from './e-commerce.service';
 
 @ApiTags('e-commerce')
@@ -194,6 +199,28 @@ export class ECommerceController {
     @Param('orderId', ParseUUIDPipe) orderId: string,
   ): Promise<OrderResponseDto> {
     return this.ecommerceService.getMyOrder(user, orderId);
+  }
+
+  @Get('admin/orders')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'List all medicine orders for admin with optional email or phone search',
+  })
+  @ApiQuery({ name: 'email', required: false, example: 'patient1@healthbridge.dev' })
+  @ApiQuery({ name: 'phone', required: false, example: '+8801700' })
+  @ApiQuery({ name: 'skip', required: false, type: Number, example: 0 })
+  @ApiQuery({ name: 'take', required: false, type: Number, example: 20 })
+  @ApiOkResponse({ type: AdminPaginatedOrdersResponseDto })
+  @ApiBadRequestResponse({ description: 'Invalid search or pagination parameters' })
+  @ApiUnauthorizedResponse()
+  @ApiForbiddenResponse()
+  listAdminOrders(
+    @Query(new ZodValidationPipe(adminListOrdersQuerySchema))
+    query: AdminListOrdersQueryDto,
+  ): Promise<AdminPaginatedOrdersResponseDto> {
+    return this.ecommerceService.listAdminOrders(query);
   }
 
   @Patch('orders/:orderId/delivery-status')
