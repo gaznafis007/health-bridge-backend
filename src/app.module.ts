@@ -16,6 +16,7 @@ import { ECommerceModule } from './modules/e-commerce/e-commerce.module';
 import { LabTestModule } from './modules/lab-test/lab-test.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { GeocodingModule } from './modules/geocoding/geocoding.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { RequestIdInterceptor } from './common/interceptors/request-id.interceptor';
 
@@ -38,6 +39,7 @@ import { RequestIdInterceptor } from './common/interceptors/request-id.intercept
     LabTestModule,
     NotificationModule,
     DashboardModule,
+    GeocodingModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 60 }]),
   ],
   controllers: [AppController],

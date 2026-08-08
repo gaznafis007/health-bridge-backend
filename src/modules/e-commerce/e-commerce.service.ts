@@ -23,8 +23,10 @@ import { CheckoutDto } from './dto/checkout.dto';
 import { GuestSessionResponseDto } from './dto/guest-session-response.dto';
 import { ListMedicinesQueryDto } from './dto/list-medicines-query.dto';
 import { MedicineCategoryDto } from './dto/medicine-category.dto';
-import { MedicineSummaryDto } from './dto/medicine-summary.dto';
+import { PaginatedMedicinesResponseDto } from './dto/paginated-medicines-response.dto';
+import { PaginatedOrdersResponseDto } from './dto/paginated-orders-response.dto';
 import { OrderResponseDto } from './dto/order-response.dto';
+import { TrackOrdersByPhoneQueryDto } from './dto/track-orders-by-phone-query.dto';
 import { UpsertCartItemDto } from './dto/upsert-cart-item.dto';
 import {
   CreateCategoryDto,
@@ -92,26 +94,36 @@ export class ECommerceService {
 
   async listMedicines(
     query: ListMedicinesQueryDto,
-  ): Promise<MedicineSummaryDto[]> {
-    const medicines = await this.ecommerceRepository.findMedicines({
+  ): Promise<PaginatedMedicinesResponseDto> {
+    const skip = query.skip ?? 0;
+    const take = query.take ?? 20;
+
+    const [medicines, total] = await this.ecommerceRepository.findMedicines({
       categoryId: query.categoryId,
       search: query.search?.trim(),
       requiresPrescription: query.requiresPrescription,
       inStockOnly: query.inStockOnly ?? true,
+      skip,
+      take,
     });
 
-    return medicines.map((medicine) => ({
-      id: medicine.id,
-      categoryId: medicine.categoryId,
-      categoryName: medicine.category.name,
-      name: medicine.name,
-      genericName: medicine.genericName,
-      manufacturer: medicine.manufacturer,
-      price: this.formatMoney(medicine.price),
-      stockQuantity: medicine.stockQuantity,
-      requiresPrescription: medicine.requiresPrescription,
-      status: medicine.status,
-    }));
+    return {
+      items: medicines.map((medicine) => ({
+        id: medicine.id,
+        categoryId: medicine.categoryId,
+        categoryName: medicine.category.name,
+        name: medicine.name,
+        genericName: medicine.genericName,
+        manufacturer: medicine.manufacturer,
+        price: this.formatMoney(medicine.price),
+        stockQuantity: medicine.stockQuantity,
+        requiresPrescription: medicine.requiresPrescription,
+        status: medicine.status,
+      })),
+      total,
+      skip,
+      take,
+    };
   }
 
   async getCart(guestSessionId: string): Promise<CartResponseDto> {
@@ -285,6 +297,23 @@ export class ECommerceService {
     };
   }
 
+  async getMyOrder(
+    user: JwtRequestUser,
+    orderId: string,
+  ): Promise<OrderResponseDto> {
+    if (user.role !== UserRole.PATIENT) {
+      throw new BadRequestException('Patients only');
+    }
+
+    const order = await this.ecommerceRepository.findOrderById(orderId);
+
+    if (!order || order.userId !== user.id) {
+      throw new NotFoundException('Order not found');
+    }
+
+    return this.mapOrder(order);
+  }
+
   async updateDeliveryStatus(orderId: string, dto: UpdateDeliveryStatusDto) {
     const order = await this.ecommerceRepository.findOrderById(orderId);
     if (!order) {
@@ -339,6 +368,28 @@ export class ECommerceService {
     }
 
     return this.mapOrder(order);
+  }
+
+  async trackOrdersByPhone(
+    query: TrackOrdersByPhoneQueryDto,
+  ): Promise<PaginatedOrdersResponseDto> {
+    const skip = query.skip ?? 0;
+    const take = query.take ?? 20;
+    const deliveryPhone = query.deliveryPhone.trim();
+
+    const [orders, total] =
+      await this.ecommerceRepository.listOrdersByDeliveryPhone(
+        deliveryPhone,
+        skip,
+        take,
+      );
+
+    return {
+      items: orders.map((order) => this.mapOrder(order)),
+      total,
+      skip,
+      take,
+    };
   }
 
   private async getValidGuestSession(sessionId: string) {

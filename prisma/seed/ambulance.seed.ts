@@ -2,11 +2,17 @@ import { AmbulanceStatus, AmbulanceVehicleType } from '@prisma/client';
 import { prisma } from './client';
 import { IDS } from './ids';
 
-export async function seedAmbulances(healthCenterHospitalId: string) {
+type AmbulanceSeedInput = {
+  hospitalId: string;
+  uttaraHospitalId: string;
+  mirpurClinicId: string;
+};
+
+export async function seedAmbulances(centers: AmbulanceSeedInput) {
   const ambulances = [
     {
       id: IDS.ambulance.basic1,
-      healthCenterId: healthCenterHospitalId,
+      healthCenterId: centers.hospitalId,
       vehicleNumber: 'DHK-AMB-1001',
       vehicleType: AmbulanceVehicleType.BASIC,
       insuranceNumber: 'INS-AMB-001',
@@ -16,7 +22,7 @@ export async function seedAmbulances(healthCenterHospitalId: string) {
     },
     {
       id: IDS.ambulance.advanced1,
-      healthCenterId: healthCenterHospitalId,
+      healthCenterId: centers.hospitalId,
       vehicleNumber: 'DHK-AMB-1002',
       vehicleType: AmbulanceVehicleType.ADVANCED,
       insuranceNumber: 'INS-AMB-002',
@@ -26,13 +32,33 @@ export async function seedAmbulances(healthCenterHospitalId: string) {
     },
     {
       id: IDS.ambulance.icu1,
-      healthCenterId: healthCenterHospitalId,
+      healthCenterId: centers.hospitalId,
       vehicleNumber: 'DHK-AMB-1003',
       vehicleType: AmbulanceVehicleType.ICU,
       insuranceNumber: 'INS-AMB-003',
       status: AmbulanceStatus.AVAILABLE,
       latitude: 23.744,
       longitude: 90.372,
+    },
+    {
+      id: IDS.ambulance.basicUttara,
+      healthCenterId: centers.uttaraHospitalId,
+      vehicleNumber: 'DHK-AMB-1004',
+      vehicleType: AmbulanceVehicleType.BASIC,
+      insuranceNumber: 'INS-AMB-004',
+      status: AmbulanceStatus.AVAILABLE,
+      latitude: 23.8759,
+      longitude: 90.3795,
+    },
+    {
+      id: IDS.ambulance.advancedMirpur,
+      healthCenterId: centers.mirpurClinicId,
+      vehicleNumber: 'DHK-AMB-1005',
+      vehicleType: AmbulanceVehicleType.ADVANCED,
+      insuranceNumber: 'INS-AMB-005',
+      status: AmbulanceStatus.AVAILABLE,
+      latitude: 23.8223,
+      longitude: 90.3654,
     },
   ];
 

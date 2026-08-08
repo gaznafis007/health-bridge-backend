@@ -33,6 +33,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
         : (exceptionResponse as { message?: string | string[] }).message ??
           'Internal server error';
 
+    const code =
+      typeof exceptionResponse === 'object' &&
+      exceptionResponse !== null &&
+      'code' in exceptionResponse
+        ? (exceptionResponse as { code?: string }).code
+        : undefined;
+
     if (status >= 500) {
       this.logger.error(
         `${request.method} ${request.url}`,
@@ -42,6 +49,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     response.status(status).json({
       statusCode: status,
+      ...(code ? { code } : {}),
       message,
       timestamp: new Date().toISOString(),
       path: request.url,

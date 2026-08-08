@@ -69,6 +69,18 @@ export class RedisKeyService {
     return this.key('idempotency', 'lab_booking', key);
   }
 
+  geocodingSearch(hash: string): string {
+    return this.key('geocoding', 'search', hash);
+  }
+
+  geocodingReverse(hash: string): string {
+    return this.key('geocoding', 'reverse', hash);
+  }
+
+  geocodingAddress(hash: string): string {
+    return this.key('geocoding', 'address', hash);
+  }
+
   bullPrefix(): string {
     return this.key('bull');
   }

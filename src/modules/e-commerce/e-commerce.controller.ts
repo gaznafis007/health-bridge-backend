@@ -49,8 +49,13 @@ import {
   listMedicinesQuerySchema,
 } from './dto/list-medicines-query.dto';
 import { MedicineCategoryDto } from './dto/medicine-category.dto';
-import { MedicineSummaryDto } from './dto/medicine-summary.dto';
+import { PaginatedMedicinesResponseDto } from './dto/paginated-medicines-response.dto';
+import { PaginatedOrdersResponseDto } from './dto/paginated-orders-response.dto';
 import { OrderResponseDto } from './dto/order-response.dto';
+import {
+  TrackOrdersByPhoneQueryDto,
+  trackOrdersByPhoneQuerySchema,
+} from './dto/track-orders-by-phone-query.dto';
 import {
   UpsertCartItemDto,
   upsertCartItemSchema,
@@ -95,13 +100,13 @@ export class ECommerceController {
 
   @Get('medicines')
   @ApiOperation({ summary: 'Browse active medicines for guest or signed-in users' })
-  @ApiOkResponse({ type: [MedicineSummaryDto] })
+  @ApiOkResponse({ type: PaginatedMedicinesResponseDto })
   @ApiBadRequestResponse({ description: 'Invalid medicine filters' })
   @ApiUnauthorizedResponse({ description: 'Not applicable for this public route' })
   listMedicines(
     @Query(new ZodValidationPipe(listMedicinesQuerySchema))
     query: ListMedicinesQueryDto,
-  ): Promise<MedicineSummaryDto[]> {
+  ): Promise<PaginatedMedicinesResponseDto> {
     return this.ecommerceService.listMedicines(query);
   }
 
@@ -164,7 +169,7 @@ export class ECommerceController {
   @Roles(UserRole.PATIENT)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List medicine orders for authenticated patient' })
-  @ApiOkResponse()
+  @ApiOkResponse({ type: PaginatedOrdersResponseDto })
   @ApiUnauthorizedResponse()
   @ApiForbiddenResponse()
   myOrders(
@@ -172,6 +177,23 @@ export class ECommerceController {
     @Query() query: PatientOrdersQueryDto,
   ) {
     return this.ecommerceService.listMyOrders(user, query);
+  }
+
+  @Get('orders/me/:orderId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PATIENT)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get a medicine order detail for authenticated patient' })
+  @ApiParam({ name: 'orderId', format: 'uuid' })
+  @ApiOkResponse({ type: OrderResponseDto })
+  @ApiUnauthorizedResponse()
+  @ApiForbiddenResponse()
+  @ApiNotFoundResponse({ description: 'Order not found' })
+  getMyOrder(
+    @CurrentUser() user: JwtRequestUser,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+  ): Promise<OrderResponseDto> {
+    return this.ecommerceService.getMyOrder(user, orderId);
   }
 
   @Patch('orders/:orderId/delivery-status')
@@ -227,6 +249,23 @@ export class ECommerceController {
     @Body() dto: UpdateMedicineDto,
   ) {
     return this.ecommerceService.updateMedicine(id, dto);
+  }
+
+  @Get('orders/by-phone')
+  @ApiOperation({
+    summary: 'Track medicine orders by delivery phone number used at checkout',
+  })
+  @ApiQuery({ name: 'deliveryPhone', required: true, example: '+8801700000000' })
+  @ApiQuery({ name: 'skip', required: false, type: Number, example: 0 })
+  @ApiQuery({ name: 'take', required: false, type: Number, example: 20 })
+  @ApiOkResponse({ type: PaginatedOrdersResponseDto })
+  @ApiBadRequestResponse({ description: 'Invalid phone number or pagination' })
+  @ApiUnauthorizedResponse({ description: 'Not applicable for this public route' })
+  trackOrdersByPhone(
+    @Query(new ZodValidationPipe(trackOrdersByPhoneQuerySchema))
+    query: TrackOrdersByPhoneQueryDto,
+  ): Promise<PaginatedOrdersResponseDto> {
+    return this.ecommerceService.trackOrdersByPhone(query);
   }
 
   @Get('orders/:orderId')

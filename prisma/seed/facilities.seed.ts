@@ -2,62 +2,109 @@ import { HealthCenterType } from '@prisma/client';
 import { prisma } from './client';
 import { IDS } from './ids';
 
-export async function seedFacilities() {
-  const hospital = await prisma.healthCenter.upsert({
-    where: { name: 'Health Bridge General Hospital' },
-    create: {
-      id: IDS.healthCenter.hospital,
-      name: 'Health Bridge General Hospital',
-      address: '123 Medical Avenue, Dhanmondi',
-      city: 'Dhaka',
-      state: 'Dhaka Division',
-      zipCode: '1205',
-      phone: '+8809612345678',
-      email: 'hospital@healthbridge.dev',
-      latitude: 23.7461,
-      longitude: 90.3742,
-      type: HealthCenterType.HOSPITAL,
-    },
-    update: {
-      address: '123 Medical Avenue, Dhanmondi',
-      city: 'Dhaka',
-      state: 'Dhaka Division',
-      zipCode: '1205',
-      phone: '+8809612345678',
-      email: 'hospital@healthbridge.dev',
-      latitude: 23.7461,
-      longitude: 90.3742,
-      type: HealthCenterType.HOSPITAL,
-    },
-  });
+type HealthCenterSeed = {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  phone: string;
+  email: string;
+  latitude: number;
+  longitude: number;
+  type: HealthCenterType;
+};
 
-  const clinic = await prisma.healthCenter.upsert({
-    where: { name: 'Health Bridge City Clinic' },
-    create: {
-      id: IDS.healthCenter.clinic,
-      name: 'Health Bridge City Clinic',
-      address: '45 Gulshan Avenue',
-      city: 'Dhaka',
-      state: 'Dhaka Division',
-      zipCode: '1212',
-      phone: '+8809612345679',
-      email: 'clinic@healthbridge.dev',
-      latitude: 23.7925,
-      longitude: 90.4078,
-      type: HealthCenterType.CLINIC,
-    },
+const HEALTH_CENTERS: HealthCenterSeed[] = [
+  {
+    id: IDS.healthCenter.hospital,
+    name: 'Health Bridge General Hospital',
+    address: '123 Medical Avenue, Dhanmondi',
+    city: 'Dhaka',
+    state: 'Dhaka Division',
+    zipCode: '1205',
+    phone: '+8809612345678',
+    email: 'hospital@healthbridge.dev',
+    latitude: 23.7461,
+    longitude: 90.3742,
+    type: HealthCenterType.HOSPITAL,
+  },
+  {
+    id: IDS.healthCenter.clinic,
+    name: 'Health Bridge City Clinic',
+    address: '45 Gulshan Avenue',
+    city: 'Dhaka',
+    state: 'Dhaka Division',
+    zipCode: '1212',
+    phone: '+8809612345679',
+    email: 'clinic@healthbridge.dev',
+    latitude: 23.7925,
+    longitude: 90.4078,
+    type: HealthCenterType.CLINIC,
+  },
+  {
+    id: IDS.healthCenter.uttaraHospital,
+    name: 'Health Bridge Uttara Hospital',
+    address: 'Plot 12, Sector 7, Uttara',
+    city: 'Dhaka',
+    state: 'Dhaka Division',
+    zipCode: '1230',
+    phone: '+8809612345682',
+    email: 'uttara@healthbridge.dev',
+    latitude: 23.8759,
+    longitude: 90.3795,
+    type: HealthCenterType.HOSPITAL,
+  },
+  {
+    id: IDS.healthCenter.mirpurClinic,
+    name: 'Health Bridge Mirpur Emergency Clinic',
+    address: 'Mirpur-10 Circle, Dhaka',
+    city: 'Dhaka',
+    state: 'Dhaka Division',
+    zipCode: '1216',
+    phone: '+8809612345683',
+    email: 'mirpur@healthbridge.dev',
+    latitude: 23.8223,
+    longitude: 90.3654,
+    type: HealthCenterType.CLINIC,
+  },
+  {
+    id: IDS.healthCenter.bananiDiagnostic,
+    name: 'Health Bridge Banani Diagnostic Center',
+    address: 'Road 11, Banani',
+    city: 'Dhaka',
+    state: 'Dhaka Division',
+    zipCode: '1213',
+    phone: '+8809612345684',
+    email: 'banani-lab@healthbridge.dev',
+    latitude: 23.7937,
+    longitude: 90.4066,
+    type: HealthCenterType.DIAGNOSTIC_CENTER,
+  },
+];
+
+async function upsertHealthCenter(center: HealthCenterSeed) {
+  return prisma.healthCenter.upsert({
+    where: { name: center.name },
+    create: center,
     update: {
-      address: '45 Gulshan Avenue',
-      city: 'Dhaka',
-      state: 'Dhaka Division',
-      zipCode: '1212',
-      phone: '+8809612345679',
-      email: 'clinic@healthbridge.dev',
-      latitude: 23.7925,
-      longitude: 90.4078,
-      type: HealthCenterType.CLINIC,
+      address: center.address,
+      city: center.city,
+      state: center.state,
+      zipCode: center.zipCode,
+      phone: center.phone,
+      email: center.email,
+      latitude: center.latitude,
+      longitude: center.longitude,
+      type: center.type,
     },
   });
+}
+
+export async function seedFacilities() {
+  const [hospital, clinic, uttaraHospital, mirpurClinic, bananiDiagnostic] =
+    await Promise.all(HEALTH_CENTERS.map(upsertHealthCenter));
 
   const centralLab = await prisma.diagnosticCenter.upsert({
     where: { name: 'Health Bridge Central Diagnostics' },
@@ -115,5 +162,14 @@ export async function seedFacilities() {
     },
   });
 
-  return { hospital, clinic, centralLab, northLab };
+  return {
+    hospital,
+    clinic,
+    uttaraHospital,
+    mirpurClinic,
+    bananiDiagnostic,
+    healthCenters: [hospital, clinic, uttaraHospital, mirpurClinic, bananiDiagnostic],
+    centralLab,
+    northLab,
+  };
 }
