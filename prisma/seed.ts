@@ -14,19 +14,20 @@ async function main() {
     uttaraHospital,
     mirpurClinic,
     healthCenters,
-    centralLab,
-    northLab,
+    diagnosticCenters,
   } = await seedFacilities();
   console.log('  Facilities seeded');
 
   await seedUsers(hospital.id);
   console.log('  Users and profiles seeded');
 
-  await seedLab(centralLab.id, northLab.id);
-  console.log('  Lab tests and packages seeded');
+  const lab = await seedLab(diagnosticCenters.map((center) => center.id));
+  console.log(
+    `  Lab tests and packages seeded (${lab.centerCount} centers × ${lab.testsPerCenter} tests each)`,
+  );
 
-  await seedEcommerce();
-  console.log('  Medicine catalog seeded');
+  const { medicines, categories } = await seedEcommerce();
+  console.log(`  Medicine catalog seeded (${medicines.length} medicines, ${categories.length} categories)`);
 
   await seedAmbulances({
     hospitalId: hospital.id,
@@ -59,13 +60,16 @@ async function main() {
   }
 
   console.log('\nHealth centers (for ambulance origin/destination):');
+  console.log(`  Total: ${healthCenters.length}`);
   for (const center of healthCenters) {
     console.log(`  - ${center.name} (${center.id}) [${center.type}]`);
   }
 
   console.log('\nDiagnostic centers:');
-  console.log(`  - ${centralLab.name} (${centralLab.id})`);
-  console.log(`  - ${northLab.name} (${northLab.id})`);
+  console.log(`  Total: ${diagnosticCenters.length}`);
+  for (const center of diagnosticCenters) {
+    console.log(`  - ${center.name} (${center.id})`);
+  }
 
   console.log('\nSeed completed successfully.');
 }
