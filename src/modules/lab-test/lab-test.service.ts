@@ -87,7 +87,8 @@ export class LabTestService {
     });
   }
 
-  listTests(centerId: string) {
+  async listTests(centerId: string) {
+    await this.requireCenter(centerId);
     return this.repo.listTestsByCenter(centerId);
   }
 
@@ -118,7 +119,8 @@ export class LabTestService {
     return this.repo.updateTest(testId, data);
   }
 
-  listPackages(centerId: string) {
+  async listPackages(centerId: string) {
+    await this.requireCenter(centerId);
     return this.repo.listPackagesByCenter(centerId);
   }
 
@@ -504,7 +506,11 @@ export class LabTestService {
 
   private async requireCenter(id: string) {
     const center = await this.repo.findCenterById(id);
-    if (!center) throw new NotFoundException(`Diagnostic center ${id} not found.`);
+    if (!center) {
+      throw new NotFoundException(
+        `Diagnostic center ${id} not found. Use GET /lab/centers for valid IDs — health center IDs will not work here.`,
+      );
+    }
     return center;
   }
 
