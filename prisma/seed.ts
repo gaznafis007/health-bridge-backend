@@ -1,6 +1,7 @@
 import { disconnect } from './seed/client';
 import { seedFacilities } from './seed/facilities.seed';
 import { seedUsers } from './seed/users.seed';
+import { seedDoctors } from './seed/doctors.seed';
 import { seedLab } from './seed/lab.seed';
 import { seedEcommerce } from './seed/ecommerce.seed';
 import { seedAmbulances } from './seed/ambulance.seed';
@@ -20,6 +21,14 @@ async function main() {
 
   await seedUsers(hospital.id);
   console.log('  Users and profiles seeded');
+
+  const doctors = await seedDoctors(healthCenters);
+  console.log(
+    `  Doctors seeded (${doctors.doctorCount} doctors, ${doctors.doctorsPerSpecialization} per specialization × ${doctors.specializationCount} specializations)`,
+  );
+  console.log(
+    `  Availability: ~${doctors.approximateSlotsPerDoctorAvg} bookable slots/doctor/week on average`,
+  );
 
   const lab = await seedLab(diagnosticCenters.map((center) => center.id));
   console.log(
@@ -69,6 +78,11 @@ async function main() {
   console.log(`  Total: ${diagnosticCenters.length}`);
   for (const center of diagnosticCenters) {
     console.log(`  - ${center.name} (${center.id})`);
+  }
+
+  console.log('\nDoctor specializations (5 ACTIVE doctors each):');
+  for (const spec of doctors.specializations) {
+    console.log(`  - ${spec}`);
   }
 
   console.log('\nSeed completed successfully.');

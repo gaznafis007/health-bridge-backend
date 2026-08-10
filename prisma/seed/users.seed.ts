@@ -1,15 +1,13 @@
 import {
-  DayOfWeek,
-  DoctorStatus,
   DriverStatus,
   Gender,
   UserRole,
 } from '@prisma/client';
 import { prisma } from './client';
 import { CREDENTIALS, IDS } from './ids';
-import { decimal, hashPassword } from './helpers';
+import { hashPassword } from './helpers';
 
-async function upsertUser(
+export async function upsertUser(
   id: string,
   email: string,
   phone: string,
@@ -83,26 +81,6 @@ export async function seedUsers(healthCenterHospitalId: string) {
     'Operator',
   );
 
-  const doctor1User = await upsertUser(
-    IDS.user.doctor1,
-    CREDENTIALS.doctor1.email,
-    '+8801700000003',
-    CREDENTIALS.doctor1.password,
-    UserRole.DOCTOR,
-    'Rahim',
-    'Ahmed',
-  );
-
-  const doctor2User = await upsertUser(
-    IDS.user.doctor2,
-    CREDENTIALS.doctor2.email,
-    '+8801700000004',
-    CREDENTIALS.doctor2.password,
-    UserRole.DOCTOR,
-    'Sadia',
-    'Khan',
-  );
-
   const patient1 = await upsertUser(
     IDS.user.patient1,
     CREDENTIALS.patient1.email,
@@ -144,66 +122,6 @@ export async function seedUsers(healthCenterHospitalId: string) {
   );
 
   const now = new Date();
-
-  const doctor1Profile = await prisma.doctorProfile.upsert({
-    where: { userId: doctor1User.id },
-    create: {
-      id: IDS.doctorProfile.doctor1,
-      userId: doctor1User.id,
-      licenseNumber: 'DMC-10001',
-      specialization: 'Cardiology',
-      qualification: 'MBBS, FCPS (Cardiology)',
-      hospital: 'Health Bridge General Hospital',
-      biography: 'Senior cardiologist with 12 years of experience.',
-      consultationFee: decimal(1500),
-      status: DoctorStatus.ACTIVE,
-      isProvideTeleHealth: true,
-      rating: 4.8,
-      totalRatings: 42,
-      approvedAt: now,
-    },
-    update: {
-      licenseNumber: 'DMC-10001',
-      specialization: 'Cardiology',
-      qualification: 'MBBS, FCPS (Cardiology)',
-      hospital: 'Health Bridge General Hospital',
-      biography: 'Senior cardiologist with 12 years of experience.',
-      consultationFee: decimal(1500),
-      status: DoctorStatus.ACTIVE,
-      isProvideTeleHealth: true,
-      approvedAt: now,
-    },
-  });
-
-  const doctor2Profile = await prisma.doctorProfile.upsert({
-    where: { userId: doctor2User.id },
-    create: {
-      id: IDS.doctorProfile.doctor2,
-      userId: doctor2User.id,
-      licenseNumber: 'DMC-10002',
-      specialization: 'General Medicine',
-      qualification: 'MBBS, MD (Internal Medicine)',
-      hospital: 'Health Bridge City Clinic',
-      biography: 'General physician focused on preventive care.',
-      consultationFee: decimal(800),
-      status: DoctorStatus.ACTIVE,
-      isProvideTeleHealth: false,
-      rating: 4.5,
-      totalRatings: 28,
-      approvedAt: now,
-    },
-    update: {
-      licenseNumber: 'DMC-10002',
-      specialization: 'General Medicine',
-      qualification: 'MBBS, MD (Internal Medicine)',
-      hospital: 'Health Bridge City Clinic',
-      biography: 'General physician focused on preventive care.',
-      consultationFee: decimal(800),
-      status: DoctorStatus.ACTIVE,
-      isProvideTeleHealth: false,
-      approvedAt: now,
-    },
-  });
 
   await prisma.patientProfile.upsert({
     where: { userId: patient1.id },
@@ -320,75 +238,12 @@ export async function seedUsers(healthCenterHospitalId: string) {
     },
   });
 
-  const availabilitySlots = [
-    {
-      doctorId: doctor1Profile.id,
-      healthCenterId: healthCenterHospitalId,
-      dayOfWeek: DayOfWeek.SUNDAY,
-      startTime: '09:00',
-      endTime: '13:00',
-      slotDurationMinutes: 30,
-    },
-    {
-      doctorId: doctor1Profile.id,
-      healthCenterId: healthCenterHospitalId,
-      dayOfWeek: DayOfWeek.TUESDAY,
-      startTime: '14:00',
-      endTime: '18:00',
-      slotDurationMinutes: 30,
-    },
-    {
-      doctorId: doctor2Profile.id,
-      healthCenterId: healthCenterHospitalId,
-      dayOfWeek: DayOfWeek.MONDAY,
-      startTime: '10:00',
-      endTime: '14:00',
-      slotDurationMinutes: 20,
-    },
-    {
-      doctorId: doctor2Profile.id,
-      healthCenterId: healthCenterHospitalId,
-      dayOfWeek: DayOfWeek.WEDNESDAY,
-      startTime: '10:00',
-      endTime: '14:00',
-      slotDurationMinutes: 20,
-    },
-  ];
-
-  for (const slot of availabilitySlots) {
-    const existing = await prisma.doctorAvailability.findFirst({
-      where: {
-        doctorId: slot.doctorId,
-        healthCenterId: slot.healthCenterId,
-        dayOfWeek: slot.dayOfWeek,
-        startTime: slot.startTime,
-      },
-    });
-
-    if (existing) {
-      await prisma.doctorAvailability.update({
-        where: { id: existing.id },
-        data: {
-          endTime: slot.endTime,
-          slotDurationMinutes: slot.slotDurationMinutes,
-          isRecurring: true,
-        },
-      });
-    } else {
-      await prisma.doctorAvailability.create({ data: slot });
-    }
-  }
-
   return {
     admin,
     dispatcher,
-    doctor1User,
-    doctor2User,
     patient1,
     patient2,
     driver1,
     driver2,
-    doctor1Profile,
-    doctor2Profile,
   };
 }
