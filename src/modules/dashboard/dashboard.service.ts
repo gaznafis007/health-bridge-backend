@@ -3,6 +3,8 @@ import {
   AmbulanceBookingStatus,
   AmbulanceStatus,
   AppointmentStatus,
+  TelehealthPresence,
+  TelehealthStatus,
   TestBookingStatus,
   UserRole,
 } from '@prisma/client';
@@ -26,6 +28,8 @@ export class DashboardService {
       orders,
       reports,
       prescriptions,
+      transactions,
+      counts,
     ] = await Promise.all([
       this.prisma.appointment.findMany({
         where: {
@@ -73,6 +77,26 @@ export class DashboardService {
         orderBy: { issuedAt: 'desc' },
         take: 5,
       }),
+      this.prisma.payment.findMany({
+        where: { userId: user.id },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        select: {
+          id: true,
+          entityType: true,
+          entityId: true,
+          amount: true,
+          paymentStatus: true,
+          paymentMethod: true,
+          createdAt: true,
+        },
+      }),
+      Promise.all([
+        this.prisma.appointment.count({ where: { patientId: user.id } }),
+        this.prisma.testBooking.count({ where: { patientId: user.id } }),
+        this.prisma.order.count({ where: { userId: user.id } }),
+        this.prisma.telehealthAppointment.count({ where: { patientId: user.id } }),
+      ]),
     ]);
 
     return {
@@ -86,6 +110,16 @@ export class DashboardService {
       })),
       recentReports: reports,
       recentPrescriptions: prescriptions,
+      recentTransactions: transactions.map((t) => ({
+        ...t,
+        amount: t.amount.toString(),
+      })),
+      counts: {
+        appointments: counts[0],
+        labBookings: counts[1],
+        orders: counts[2],
+        telehealth: counts[3],
+      },
     };
   }
 
@@ -99,8 +133,23 @@ export class DashboardService {
     const endOfDay = new Date(startOfDay);
     endOfDay.setUTCDate(endOfDay.getUTCDate() + 1);
 
-    const [todayAppointments, scheduledCount, completedCount, cancelledCount] =
-      await Promise.all([
+    const startOfMonth = new Date(startOfDay);
+    startOfMonth.setUTCDate(1);
+    const endNext7 = new Date(startOfDay);
+    endNext7.setUTCDate(endNext7.getUTCDate() + 7);
+
+    const [
+      todayAppointments,
+      scheduledCount,
+      completedCount,
+      cancelledCount,
+      next7DaysCount,
+      completedThisMonth,
+      profile,
+      availability,
+      pendingOffers,
+      telehealthCompletedMonth,
+    ] = await Promise.all([
         this.prisma.appointment.findMany({
           where: {
             doctorId: user.id,
@@ -132,11 +181,46 @@ export class DashboardService {
             status: AppointmentStatus.CANCELLED,
           },
         }),
+        this.prisma.appointment.count({
+          where: {
+            doctorId: user.id,
+            status: AppointmentStatus.SCHEDULED,
+            appointmentDate: { gte: startOfDay, lt: endNext7 },
+          },
+        }),
+        this.prisma.appointment.count({
+          where: {
+            doctorId: user.id,
+            status: AppointmentStatus.COMPLETED,
+            createdAt: { gte: startOfMonth },
+          },
+        }),
+        this.prisma.doctorProfile.findUnique({ where: { userId: user.id } }),
+        this.prisma.doctorAvailability.findMany({
+          where: { doctor: { userId: user.id } },
+          include: { healthCenter: { select: { name: true } } },
+        }),
+        this.prisma.telehealthAppointment.count({
+          where: {
+            doctorId: user.id,
+            status: TelehealthStatus.REQUESTED,
+            offerExpiresAt: { gt: new Date() },
+          },
+        }),
+        this.prisma.telehealthAppointment.count({
+          where: {
+            doctorId: user.id,
+            status: TelehealthStatus.COMPLETED,
+            createdAt: { gte: startOfMonth },
+          },
+        }),
       ]);
 
     const feesToday = todayAppointments
       .filter((a) => a.status === AppointmentStatus.COMPLETED)
       .reduce((sum, a) => sum + Number(a.consultationFee), 0);
+
+    const effectiveAvailability = this.effectiveAvailability(profile);
 
     return {
       todayAppointments: todayAppointments.map((a) => ({
@@ -147,9 +231,51 @@ export class DashboardService {
         scheduled: scheduledCount,
         completed: completedCount,
         cancelled: cancelledCount,
+        next7DaysScheduled: next7DaysCount,
+        completedThisMonth,
       },
       feesEarnedToday: feesToday.toFixed(2),
+      availability: availability.map((a) => ({
+        id: a.id,
+        healthCenterName: a.healthCenter.name,
+        dayOfWeek: a.dayOfWeek,
+        startTime: a.startTime,
+        endTime: a.endTime,
+        slotDurationMinutes: a.slotDurationMinutes,
+        isRecurring: a.isRecurring,
+        specificDate: a.specificDate?.toISOString() ?? null,
+      })),
+      telehealth: {
+        isProvideTeleHealth: profile?.isProvideTeleHealth ?? false,
+        presence: profile?.telehealthPresence ?? TelehealthPresence.OFFLINE,
+        effectiveAvailability,
+        onlineUntil: profile?.telehealthOnlineUntil?.toISOString() ?? null,
+        pendingOffers,
+        completedThisMonth: telehealthCompletedMonth,
+        rating: profile?.rating ?? 0,
+      },
     };
+  }
+
+  private effectiveAvailability(
+    profile: {
+      telehealthPresence: TelehealthPresence;
+      telehealthOnlineUntil: Date | null;
+      activeTelehealthId: string | null;
+      isProvideTeleHealth: boolean;
+    } | null,
+  ): 'ONLINE' | 'BUSY' | 'IN_CALL' | 'OFFLINE' {
+    if (!profile?.isProvideTeleHealth) return 'OFFLINE';
+    if (profile.activeTelehealthId) return 'IN_CALL';
+    if (profile.telehealthPresence === TelehealthPresence.BUSY) return 'BUSY';
+    if (
+      profile.telehealthPresence === TelehealthPresence.ONLINE &&
+      profile.telehealthOnlineUntil &&
+      profile.telehealthOnlineUntil > new Date()
+    ) {
+      return 'ONLINE';
+    }
+    return 'OFFLINE';
   }
 
   async adminDashboard() {
@@ -163,6 +289,9 @@ export class DashboardService {
       appointmentsToday,
       fleetAvailable,
       fleetOnDuty,
+      telehealthWaiting,
+      telehealthActive,
+      telehealthMissedToday,
     ] = await Promise.all([
       this.prisma.order.count({ where: { createdAt: { gte: startOfDay } } }),
       this.prisma.testBooking.count({
@@ -189,6 +318,21 @@ export class DashboardService {
       this.prisma.ambulance.count({
         where: { status: AmbulanceStatus.ON_DUTY },
       }),
+      this.prisma.telehealthAppointment.count({
+        where: {
+          status: TelehealthStatus.REQUESTED,
+          doctorId: null,
+        },
+      }),
+      this.prisma.telehealthAppointment.count({
+        where: { status: { in: [TelehealthStatus.ACTIVE, TelehealthStatus.DOCTOR_JOINED, TelehealthStatus.PATIENT_JOINED] } },
+      }),
+      this.prisma.telehealthAppointment.count({
+        where: {
+          status: TelehealthStatus.MISSED,
+          createdAt: { gte: startOfDay },
+        },
+      }),
     ]);
 
     const pendingLabPayments = await this.prisma.testBooking.count({
@@ -207,6 +351,11 @@ export class DashboardService {
         fleetOnDuty,
       },
       lab: { pendingPaymentBookings: pendingLabPayments },
+      telehealth: {
+        waitingRequests: telehealthWaiting,
+        activeSessions: telehealthActive,
+        missedToday: telehealthMissedToday,
+      },
     };
   }
 }

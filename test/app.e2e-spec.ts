@@ -16,12 +16,20 @@ describe('AppController (e2e)', () => {
       .useValue({
         $connect: jest.fn(),
         $disconnect: jest.fn(),
+        $queryRaw: jest.fn().mockResolvedValue([{ '?column?': 1 }]),
+        testReport: {
+          findUnique: jest.fn().mockResolvedValue(null),
+        },
       })
       .compile();
 
     app = moduleFixture.createNestApplication();
     setupSwagger(app);
     await app.init();
+  });
+
+  afterEach(async () => {
+    await app?.close();
   });
 
   it('/ (GET)', () => {
@@ -120,9 +128,17 @@ describe('AppController (e2e)', () => {
           expect(body.paths['/lab/bookings/me']).toBeDefined();
           expect(body.paths['/lab/reports']).toBeDefined();
           expect(body.paths['/lab/reports/me']).toBeDefined();
-          expect(
-            body.paths['/lab/reports/token/{reportToken}'],
-          ).toBeDefined();
+          expect(body.paths['/lab/reports/token/{reportToken}']).toBeDefined();
+          // Telehealth module routes
+          expect(body.paths['/telehealth/requests']).toBeDefined();
+          expect(body.paths['/telehealth/doctor/presence']).toBeDefined();
+          expect(body.paths['/telehealth/doctor/inbox']).toBeDefined();
+          // Reports module routes
+          expect(body.paths['/reports/revenue']).toBeDefined();
+          expect(body.paths['/reports/operations']).toBeDefined();
+          // Auth verification routes
+          expect(body.paths['/auth/verify/email/request']).toBeDefined();
+          expect(body.paths['/auth/verify/phone/request']).toBeDefined();
         },
       );
   });
@@ -137,6 +153,25 @@ describe('AppController (e2e)', () => {
   it('/lab/centers rejects unauthenticated', () => {
     return request(app.getHttpServer() as Parameters<typeof request>[0])
       .get('/lab/centers')
+      .expect(401);
+  });
+
+  it('/telehealth/requests rejects unauthenticated', () => {
+    return request(app.getHttpServer() as Parameters<typeof request>[0])
+      .post('/telehealth/requests')
+      .send({})
+      .expect(401);
+  });
+
+  it('/reports/revenue rejects unauthenticated', () => {
+    return request(app.getHttpServer() as Parameters<typeof request>[0])
+      .get('/reports/revenue')
+      .expect(401);
+  });
+
+  it('/auth/verify/email/request rejects unauthenticated', () => {
+    return request(app.getHttpServer() as Parameters<typeof request>[0])
+      .post('/auth/verify/email/request')
       .expect(401);
   });
 

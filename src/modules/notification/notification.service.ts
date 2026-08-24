@@ -80,6 +80,16 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  safeEnqueue(
+    type: NotificationJobType,
+    payload: Omit<NotificationJobPayload, 'type'>,
+    options?: { delayMs?: number },
+  ): void {
+    void this.enqueue(type, payload, options).catch((err: Error) => {
+      this.logger.error(`Failed to enqueue ${type}: ${err.message}`, err.stack);
+    });
+  }
+
   getPreferences(userId: string) {
     return this.repo.findPreference(userId).then((p) =>
       p ??

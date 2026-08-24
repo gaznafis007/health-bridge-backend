@@ -6,6 +6,7 @@ import request from 'supertest';
 import { UserRole } from '@prisma/client';
 import { AuthController } from '../src/modules/auth/auth.controller';
 import { AuthService } from '../src/modules/auth/auth.service';
+import { AuthVerificationService } from '../src/modules/auth/auth-verification.service';
 import { SignupDto } from '../src/modules/auth/dto/signup.dto';
 import { AuthRepository } from '../src/modules/auth/repositories/auth.repository';
 
@@ -26,6 +27,7 @@ describe('AuthController (e2e)', () => {
     | 'findUserByPhone'
     | 'createUserWithProfile'
     | 'storeRefreshToken'
+    | 'revokeAllUserTokens'
   > = {
     findUserByEmailOrPhone: jest.fn((identity: string) =>
       Promise.resolve(
@@ -50,6 +52,7 @@ describe('AuthController (e2e)', () => {
       return Promise.resolve(user as never);
     }),
     storeRefreshToken: jest.fn(() => Promise.resolve({} as never)),
+    revokeAllUserTokens: jest.fn(() => Promise.resolve(undefined)),
   };
 
   beforeAll(async () => {
@@ -61,6 +64,16 @@ describe('AuthController (e2e)', () => {
       controllers: [AuthController],
       providers: [
         AuthService,
+        {
+          provide: AuthVerificationService,
+          useValue: {
+            requestEmailVerification: jest.fn().mockResolvedValue({ success: true }),
+            confirmEmail: jest.fn().mockResolvedValue({ success: true }),
+            requestPhoneOtp: jest.fn().mockResolvedValue({ success: true }),
+            confirmPhoneOtp: jest.fn().mockResolvedValue({ success: true }),
+            sendSignupVerificationEmail: jest.fn(),
+          },
+        },
         {
           provide: AuthRepository,
           useValue: repoMock as AuthRepository,

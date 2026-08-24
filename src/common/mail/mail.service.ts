@@ -8,6 +8,12 @@ export interface SendReportReadyOptions {
   reportToken: string;
 }
 
+export interface SendEmailVerificationOptions {
+  to: string;
+  firstName: string;
+  verifyUrl: string;
+}
+
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
@@ -68,6 +74,34 @@ export class MailService {
     } catch (err) {
       this.logger.error(
         `[MailService] Failed to send report-ready email to ${opts.to}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  async sendEmailVerification(opts: SendEmailVerificationOptions): Promise<void> {
+    if (!this.resend) {
+      this.logger.warn(
+        `[MailService] Skipping verification email to ${opts.to} — Resend not configured.`,
+      );
+      return;
+    }
+
+    try {
+      await this.resend.emails.send({
+        from: this.from,
+        to: opts.to,
+        subject: 'Verify your Health Bridge email',
+        html: `
+          <p>Hi ${opts.firstName},</p>
+          <p>Please verify your email address by clicking the link below:</p>
+          <p><a href="${opts.verifyUrl}">Verify Email</a></p>
+          <p>This link expires in 30 minutes.</p>
+          <p>— Health Bridge Team</p>
+        `,
+      });
+    } catch (err) {
+      this.logger.error(
+        `[MailService] Failed to send verification email to ${opts.to}: ${(err as Error).message}`,
       );
     }
   }

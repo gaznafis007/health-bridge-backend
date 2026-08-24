@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import { UserRole } from '@prisma/client';
 import { AuthService } from './auth.service';
+import { AuthVerificationService } from './auth-verification.service';
 import { AuthRepository } from './repositories/auth.repository';
 
 describe('AuthService', () => {
@@ -21,6 +22,7 @@ describe('AuthService', () => {
             findUserByPhone: jest.fn(),
             createUserWithProfile: jest.fn(),
             storeRefreshToken: jest.fn(),
+            revokeAllUserTokens: jest.fn(),
           },
         },
         {
@@ -32,6 +34,12 @@ describe('AuthService', () => {
               .mockResolvedValueOnce('refresh-token')
               .mockResolvedValueOnce('access-token-2')
               .mockResolvedValueOnce('refresh-token-2'),
+          },
+        },
+        {
+          provide: AuthVerificationService,
+          useValue: {
+            sendSignupVerificationEmail: jest.fn(),
           },
         },
       ],
@@ -50,6 +58,7 @@ describe('AuthService', () => {
       email: 'user@test.com',
     } as never);
     repository.storeRefreshToken.mockResolvedValue({} as never);
+    repository.revokeAllUserTokens.mockResolvedValue(undefined);
 
     const result = await service.signup({
       email: 'user@test.com',

@@ -6,6 +6,11 @@ export const NOTIFICATION_JOB_TYPES = {
   ORDER_STATUS: 'order-status',
   LAB_BOOKING_CONFIRMED: 'lab-booking-confirmed',
   AMBULANCE_ACCEPTED: 'ambulance-accepted',
+  TELEHEALTH_OFFER: 'telehealth-offer',
+  TELEHEALTH_ACCEPTED: 'telehealth-accepted',
+  TELEHEALTH_COMPLETED: 'telehealth-completed',
+  TELEHEALTH_MISSED: 'telehealth-missed',
+  EMAIL_VERIFICATION: 'email-verification',
 } as const;
 
 export type NotificationJobType =

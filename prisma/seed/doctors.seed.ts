@@ -1,4 +1,4 @@
-import { DayOfWeek, DoctorStatus, UserRole } from '@prisma/client';
+import { DayOfWeek, DoctorStatus, TelehealthPresence, UserRole } from '@prisma/client';
 import type { HealthCenter } from '@prisma/client';
 import { prisma } from './client';
 import {
@@ -158,6 +158,7 @@ export async function seedDoctors(healthCenters: HealthCenter[]) {
     DOCTORS_PER_SPECIALIZATION,
   );
   const now = new Date();
+  const telehealthOnlineUntil = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
   let availabilityRules = 0;
   let approximateSlots = 0;
 
@@ -183,6 +184,13 @@ export async function seedDoctors(healthCenters: HealthCenter[]) {
       entry.lastName,
     );
 
+    const telehealthPresence =
+      entry.isProvideTeleHealth
+        ? entry.doctorIndex < 2
+          ? TelehealthPresence.BUSY
+          : TelehealthPresence.ONLINE
+        : TelehealthPresence.OFFLINE;
+
     const profile = await prisma.doctorProfile.upsert({
       where: { userId: user.id },
       create: {
@@ -196,6 +204,9 @@ export async function seedDoctors(healthCenters: HealthCenter[]) {
         consultationFee: decimal(entry.consultationFee),
         status: DoctorStatus.ACTIVE,
         isProvideTeleHealth: entry.isProvideTeleHealth,
+        telehealthPresence,
+        telehealthOnlineUntil: entry.isProvideTeleHealth ? telehealthOnlineUntil : null,
+        activeTelehealthId: null,
         rating: entry.rating,
         totalRatings: entry.totalRatings,
         approvedAt: now,
@@ -209,6 +220,9 @@ export async function seedDoctors(healthCenters: HealthCenter[]) {
         consultationFee: decimal(entry.consultationFee),
         status: DoctorStatus.ACTIVE,
         isProvideTeleHealth: entry.isProvideTeleHealth,
+        telehealthPresence,
+        telehealthOnlineUntil: entry.isProvideTeleHealth ? telehealthOnlineUntil : null,
+        activeTelehealthId: null,
         rating: entry.rating,
         totalRatings: entry.totalRatings,
         approvedAt: now,

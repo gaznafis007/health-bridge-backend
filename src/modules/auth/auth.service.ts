@@ -17,6 +17,7 @@ import { RefreshDto } from './dto/refresh.dto';
 import { SigninDto } from './dto/signin.dto';
 import { SignupDto } from './dto/signup.dto';
 import { AuthRepository } from './repositories/auth.repository';
+import { AuthVerificationService } from './auth-verification.service';
 import { JwtPayload } from './types/jwt-payload.type';
 
 @Injectable()
@@ -24,6 +25,7 @@ export class AuthService {
   constructor(
     private readonly authRepository: AuthRepository,
     private readonly jwtService: JwtService,
+    private readonly verification: AuthVerificationService,
   ) {}
 
   async signup(dto: SignupDto): Promise<AuthResponseDto> {
@@ -55,6 +57,12 @@ export class AuthService {
     const user = await this.authRepository.createUserWithProfile(
       dto,
       passwordHash,
+    );
+
+    this.verification.sendSignupVerificationEmail(
+      user.id,
+      user.email,
+      user.firstName,
     );
 
     return this.issueTokens(user.id, user.role, user.email);

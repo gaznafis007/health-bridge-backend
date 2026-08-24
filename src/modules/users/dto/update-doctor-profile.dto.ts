@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class UpdateDoctorProfileDto {
   @ApiPropertyOptional()
@@ -18,4 +18,9 @@ export class UpdateDoctorProfileDto {
   @IsNumber()
   @Min(0)
   consultationFee?: number;
+
+  @ApiPropertyOptional({ description: 'Enable telehealth (requires ACTIVE doctor status)' })
+  @IsOptional()
+  @IsBoolean()
+  isProvideTeleHealth?: boolean;
 }

@@ -22,6 +22,7 @@ import Redis from 'ioredis';
 
 import { PrismaService } from '../../database/prisma.service';
 import { RedisKeyService } from '../../common/redis/redis-key.service';
+import { safeRedisClose } from '../../common/redis/safe-redis-close';
 import { NOTIFICATION_JOB_TYPES } from '../notification/constants/notification.constants';
 import { NotificationService } from '../notification/notification.service';
 import type { JwtRequestUser } from '../../common/types/jwt-request-user';
@@ -68,7 +69,7 @@ export class AmbulanceService implements OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
-    await this.redis?.quit();
+    await safeRedisClose(this.redis);
   }
 
   private async redisGet(key: string): Promise<string | null> {

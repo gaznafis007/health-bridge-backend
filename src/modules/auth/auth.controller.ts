@@ -14,15 +14,20 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import type { JwtRequestUser } from '../../common/types/jwt-request-user';
 import { AuthService } from './auth.service';
+import { AuthVerificationService } from './auth-verification.service';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { SigninDto } from './dto/signin.dto';
 import { SignupDto } from './dto/signup.dto';
+import { ConfirmEmailDto, ConfirmPhoneDto } from './dto/verification.dto';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly verification: AuthVerificationService,
+  ) {}
 
   @Post('signup')
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
@@ -70,5 +75,43 @@ export class AuthController {
   @ApiUnauthorizedResponse()
   logout(@CurrentUser() user: JwtRequestUser): Promise<{ success: true }> {
     return this.authService.logout(user.id);
+  }
+
+  @Post('verify/email/request')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 3, ttl: 3_600_000 } })
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Request email verification link' })
+  @ApiOkResponse({ schema: { example: { success: true } } })
+  requestEmailVerification(@CurrentUser() user: JwtRequestUser) {
+    return this.verification.requestEmailVerification(user);
+  }
+
+  @Post('verify/email/confirm')
+  @Throttle({ default: { limit: 10, ttl: 900_000 } })
+  @ApiOperation({ summary: 'Confirm email with verification token' })
+  @ApiOkResponse({ schema: { example: { success: true } } })
+  confirmEmail(@Body() dto: ConfirmEmailDto) {
+    return this.verification.confirmEmail(dto.token);
+  }
+
+  @Post('verify/phone/request')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 3, ttl: 3_600_000 } })
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Request phone OTP' })
+  @ApiOkResponse({ schema: { example: { success: true } } })
+  requestPhoneOtp(@CurrentUser() user: JwtRequestUser) {
+    return this.verification.requestPhoneOtp(user);
+  }
+
+  @Post('verify/phone/confirm')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 10, ttl: 900_000 } })
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Confirm phone with OTP code' })
+  @ApiOkResponse({ schema: { example: { success: true } } })
+  confirmPhoneOtp(@CurrentUser() user: JwtRequestUser, @Body() dto: ConfirmPhoneDto) {
+    return this.verification.confirmPhoneOtp(user, dto.code);
   }
 }

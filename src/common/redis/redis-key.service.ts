@@ -69,6 +69,22 @@ export class RedisKeyService {
     return this.key('idempotency', 'lab_booking', key);
   }
 
+  telehealthIdempotency(key: string): string {
+    return this.key('idempotency', 'telehealth', key);
+  }
+
+  emailVerificationJti(jti: string): string {
+    return this.key('verify', 'email', 'jti', jti);
+  }
+
+  otpResendCooldown(phone: string): string {
+    return this.key('otp_resend', this.hash(phone));
+  }
+
+  otpLockout(phone: string): string {
+    return this.key('otp_lockout', this.hash(phone));
+  }
+
   geocodingSearch(hash: string): string {
     return this.key('geocoding', 'search', hash);
   }

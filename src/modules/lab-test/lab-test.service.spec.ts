@@ -488,7 +488,12 @@ describe('LabTestService', () => {
         bookingId: 'booking-1',
         booking: {
           bookingStatus: TestBookingStatus.COMPLETED,
-          patient: { id: 'p1', name: 'Alice', email: 'alice@test.com' },
+          patient: {
+            id: 'p1',
+            firstName: 'Alice',
+            lastName: 'Smith',
+            email: 'alice@test.com',
+          },
           diagnosticCenter: { name: 'BioLab' },
         },
         test: { name: 'CBC Test' },
@@ -499,7 +504,7 @@ describe('LabTestService', () => {
       const result = await svc.getAllReports({});
 
       expect(result.total).toBe(1);
-      expect(result.data[0].patientName).toBe('Alice');
+      expect(result.data[0].patientName).toBe('Alice Smith');
       expect(result.data[0].centerName).toBe('BioLab');
       expect(result.data[0].testName).toBe('CBC Test');
       expect(result.data[0].bookingStatus).toBe(TestBookingStatus.COMPLETED);

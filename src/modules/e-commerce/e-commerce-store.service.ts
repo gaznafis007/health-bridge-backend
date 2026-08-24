@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import Redis from 'ioredis';
 import { RedisKeyService } from '../../common/redis/redis-key.service';
+import { safeRedisClose } from '../../common/redis/safe-redis-close';
 import { CartState } from './types/cart.type';
 
 @Injectable()
@@ -22,7 +23,7 @@ export class ECommerceStoreService implements OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
-    await this.redis?.quit();
+    await safeRedisClose(this.redis);
   }
 
   async getCart(sessionId: string): Promise<CartState | null> {

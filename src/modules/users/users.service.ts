@@ -1,9 +1,5 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { DoctorStatus, UserRole } from '@prisma/client';
 import type { JwtRequestUser } from '../../common/types/jwt-request-user';
 import { AssignRoleDto } from './dto/assign-role.dto';
 import { UpdateDoctorProfileDto } from './dto/update-doctor-profile.dto';
@@ -42,6 +38,14 @@ export class UsersService {
     const user = await this.repo.findById(userId);
     if (!user || user.role !== UserRole.DOCTOR || !user.doctorProfile) {
       throw new BadRequestException('Doctor profile not found');
+    }
+    if (
+      dto.isProvideTeleHealth === true &&
+      user.doctorProfile.status !== DoctorStatus.ACTIVE
+    ) {
+      throw new BadRequestException(
+        'Only ACTIVE doctors can enable telehealth',
+      );
     }
     await this.repo.updateDoctorProfile(userId, dto);
     return this.getMe(userId);

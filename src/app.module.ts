@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { MailModule } from './common/mail/mail.module';
+import { SmsModule } from './common/sms/sms.module';
 import { RedisKeyModule } from './common/redis/redis-key.module';
 import { StorageModule } from './common/storage/storage.module';
 import { DatabaseModule } from './database/database.module';
@@ -17,6 +18,8 @@ import { LabTestModule } from './modules/lab-test/lab-test.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { GeocodingModule } from './modules/geocoding/geocoding.module';
+import { TelehealthModule } from './modules/telehealth/telehealth.module';
+import { ReportsModule } from './modules/reports/reports.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { RequestIdInterceptor } from './common/interceptors/request-id.interceptor';
 
@@ -31,6 +34,7 @@ import { RequestIdInterceptor } from './common/interceptors/request-id.intercept
     DatabaseModule,
     StorageModule,
     MailModule,
+    SmsModule,
     AuthModule,
     UsersModule,
     AppointmentModule,
@@ -40,6 +44,8 @@ import { RequestIdInterceptor } from './common/interceptors/request-id.intercept
     NotificationModule,
     DashboardModule,
     GeocodingModule,
+    TelehealthModule,
+    ReportsModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 60 }]),
   ],
   controllers: [AppController],

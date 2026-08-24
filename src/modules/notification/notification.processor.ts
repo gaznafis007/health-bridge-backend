@@ -76,6 +76,21 @@ export class NotificationProcessor {
             reportToken: data.reportToken,
           });
           break;
+        case NOTIFICATION_JOB_TYPES.EMAIL_VERIFICATION:
+          await this.mail.sendEmailVerification({
+            to: recipient,
+            verifyUrl: data.verifyUrl,
+            firstName: data.firstName,
+          });
+          break;
+        case NOTIFICATION_JOB_TYPES.TELEHEALTH_OFFER:
+        case NOTIFICATION_JOB_TYPES.TELEHEALTH_ACCEPTED:
+        case NOTIFICATION_JOB_TYPES.TELEHEALTH_COMPLETED:
+        case NOTIFICATION_JOB_TYPES.TELEHEALTH_MISSED:
+          this.logger.log(
+            `Telehealth notification ${type} for ${recipient}: ${JSON.stringify(data)}`,
+          );
+          break;
         default:
           this.logger.log(`Notification job ${type} for ${recipient}: ${JSON.stringify(data)}`);
       }
@@ -116,6 +131,13 @@ export class NotificationProcessor {
       case NOTIFICATION_JOB_TYPES.LAB_BOOKING_CONFIRMED:
         return NotificationCategory.REPORT;
       case NOTIFICATION_JOB_TYPES.AMBULANCE_ACCEPTED:
+        return NotificationCategory.TRANSACTION;
+      case NOTIFICATION_JOB_TYPES.TELEHEALTH_OFFER:
+      case NOTIFICATION_JOB_TYPES.TELEHEALTH_ACCEPTED:
+      case NOTIFICATION_JOB_TYPES.TELEHEALTH_COMPLETED:
+      case NOTIFICATION_JOB_TYPES.TELEHEALTH_MISSED:
+        return NotificationCategory.APPOINTMENT;
+      case NOTIFICATION_JOB_TYPES.EMAIL_VERIFICATION:
         return NotificationCategory.TRANSACTION;
       default:
         return NotificationCategory.TRANSACTION;

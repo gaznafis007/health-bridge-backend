@@ -86,6 +86,9 @@ export class UsersRepository {
         ...(dto.consultationFee !== undefined && {
           consultationFee: dto.consultationFee,
         }),
+        ...(dto.isProvideTeleHealth !== undefined && {
+          isProvideTeleHealth: dto.isProvideTeleHealth,
+        }),
       },
     });
   }

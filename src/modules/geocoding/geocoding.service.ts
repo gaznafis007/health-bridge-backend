@@ -9,6 +9,7 @@ import { Inject } from '@nestjs/common';
 import { createHash } from 'crypto';
 import Redis from 'ioredis';
 import { RedisKeyService } from '../../common/redis/redis-key.service';
+import { safeRedisClose } from '../../common/redis/safe-redis-close';
 import {
   GEOCODING_CACHE_TTL_S,
   GEOCODING_GEOCODE_RATE_LIMIT,
@@ -40,7 +41,7 @@ export class GeocodingService implements OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
-    await this.redis?.quit();
+    await safeRedisClose(this.redis);
   }
 
   async search(

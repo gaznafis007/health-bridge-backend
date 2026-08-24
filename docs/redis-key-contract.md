@@ -36,6 +36,10 @@ Configure via env:
 | `session:{session_id}` | 24h | Auth session payload |
 | `session_index:{user_id}` | 24h | Set of active session ids per user |
 | `idempotency:{scope}:{idempotency_key}` | 24h | Prevent duplicate order/payment execution |
+| `idempotency:telehealth:{idempotency_key}` | 24h | Telehealth request creation idempotency |
+| `verify:email:jti:{jti}` | 24h | One-time email verification token denylist |
+| `otp_resend:{phone_hash}` | 60s | Phone OTP resend cooldown |
+| `otp_lockout:{phone_hash}` | 15 min | Phone OTP brute-force lockout |
 | `queue:notifications` | managed by queue | Logical notifications queue key |
 | `bull` | managed by Bull/BullMQ | Queue infra prefix |
 

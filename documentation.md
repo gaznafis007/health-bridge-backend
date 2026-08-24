@@ -24,6 +24,8 @@ This document describes every **currently exposed** HTTP API in the Health Bridg
    - [Dashboards](#dashboards)
    - [Lab tests](#lab-tests)
    - [Ambulance (emergency transport)](#ambulance-emergency-transport)
+   - [Telehealth (emergency video)](#telehealth-emergency-video)
+   - [Business reports (admin)](#business-reports-admin)
    - [Files](#files)
 8. [Enums and status machines](#enums-and-status-machines)
 9. [Planned but not exposed yet](#planned-but-not-exposed-yet)
@@ -47,11 +49,16 @@ This document describes every **currently exposed** HTTP API in the Health Bridg
 | **Lab test booking** | Patient, Admin | Bearer JWT | Centers, tests, packages, booking, sample lifecycle, reports |
 | **Anonymous lab report access** | Anyone with token | None | Download report metadata via `reportToken` |
 | **Emergency ambulance** | Patient, Driver, Dispatcher, Admin | Bearer JWT | Request ride, dispatch, live location, driver lifecycle |
+| **Telehealth (emergency video)** | Patient, Doctor, Admin | Bearer JWT | On-demand consult, doctor presence, sequential ring, video join tokens |
+| **Business reports** | Admin | Bearer JWT | Revenue, operations, doctor KPIs, top medicines/tests |
+| **Email & phone verification** | Authenticated | Bearer JWT (+ public email confirm) | OTP phone verify, email link verify |
 | **File proxy** | Anyone | None | Stream files stored in R2 via `/file/{objectKey}` |
 
 ### In database / roadmap (no public routes yet)
 
-**Telehealth** (on-demand emergency video) and a **standalone payment gateway** module (unified intents/webhooks). Schema exists; controllers are not wired in `AppModule` yet.
+A **standalone payment gateway** module (unified intents/webhooks) is planned. Schema exists; dedicated payment controller is not wired yet.
+
+> **Frontend integration guide for telehealth, reports, dashboard additions, and verification:** see [docs/frontend-integration.md](docs/frontend-integration.md).
 
 ---
 
@@ -121,6 +128,19 @@ JWT payload (for debugging only — **do not trust client-side for authorization
 - Revokes all refresh tokens for the current user.
 - Response: `{ "success": true }`
 
+### Email & phone verification
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| POST | `/auth/verify/email/request` | Bearer | Sends verification link (non-blocking; generic `{ success: true }`) |
+| POST | `/auth/verify/email/confirm` | Public | Body `{ token }` — dedicated JWT with `typ: email_verify` |
+| POST | `/auth/verify/phone/request` | Bearer | Issues 6-digit OTP via SMS (requires Redis; 503 if unavailable) |
+| POST | `/auth/verify/phone/confirm` | Bearer | Body `{ code }` — 6 digits |
+
+Signup does **not** block on verification. No existing routes require `@RequireVerified()` yet.
+
+User fields on `GET /users/me`: `isVerified`, `emailVerifiedAt`, `phoneVerifiedAt`.
+
 ### Role-based access
 
 Protected controllers use `JwtAuthGuard` + `RolesGuard`. If the user’s `role` is not in the route’s allowed list, the API returns **403** with message `Insufficient role permission`.
@@ -143,7 +163,7 @@ Protected controllers use `JwtAuthGuard` + `RolesGuard`. If the user’s `role` 
 | `Authorization` | Optional | `POST /e-commerce/checkout` — if present and user is `PATIENT`, order is linked to `userId` |
 | `Content-Type` | JSON bodies | `application/json` |
 | `Content-Type` | Lab report upload | `multipart/form-data` |
-| `Idempotency-Key` | Optional | **Header** on `POST /lab/bookings` and `POST /ambulance/bookings` (replay returns cached booking) |
+| `Idempotency-Key` | Optional | **Header** on `POST /lab/bookings`, `POST /ambulance/bookings`, and `POST /telehealth/requests` (replay returns cached response) |
 | `x-request-id` | Optional | Correlation id; server echoes it on every response (generates UUID if omitted) |
 | `User-Agent` | Optional | Recorded on guest session / signin |
 
@@ -1394,7 +1414,14 @@ Base path: `/dashboard` — **Bearer required**; role enforced per route.
   "recentAmbulanceBookings": [ /* max 5 */ ],
   "recentOrders": [ /* max 5; totalAmount/finalAmount as strings */ ],
   "recentReports": [ /* max 5: id, reportFileName, reportStatus, reportToken, createdAt */ ],
-  "recentPrescriptions": [ /* max 5 */ ]
+  "recentPrescriptions": [ /* max 5 */ ],
+  "recentTransactions": [ /* max 10 payments; amount as string */ ],
+  "counts": {
+    "appointments": 0,
+    "labBookings": 0,
+    "orders": 0,
+    "telehealth": 0
+  }
 }
 ```
 
@@ -1422,9 +1449,32 @@ Base path: `/dashboard` — **Bearer required**; role enforced per route.
   "counts": {
     "scheduled": 12,
     "completed": 40,
-    "cancelled": 2
+    "cancelled": 2,
+    "next7DaysScheduled": 8,
+    "completedThisMonth": 15
   },
-  "feesEarnedToday": "2400.00"
+  "feesEarnedToday": "2400.00",
+  "availability": [
+    {
+      "id": "uuid",
+      "healthCenterName": "City Clinic",
+      "dayOfWeek": "MONDAY",
+      "startTime": "09:00",
+      "endTime": "13:00",
+      "slotDurationMinutes": 30,
+      "isRecurring": true,
+      "specificDate": null
+    }
+  ],
+  "telehealth": {
+    "isProvideTeleHealth": true,
+    "presence": "ONLINE",
+    "effectiveAvailability": "ONLINE",
+    "onlineUntil": "2026-05-31T13:00:00.000Z",
+    "pendingOffers": 0,
+    "completedThisMonth": 3,
+    "rating": 4.6
+  }
 }
 ```
 
@@ -1452,6 +1502,11 @@ Base path: `/dashboard` — **Bearer required**; role enforced per route.
   },
   "lab": {
     "pendingPaymentBookings": 4
+  },
+  "telehealth": {
+    "waitingRequests": 2,
+    "activeSessions": 1,
+    "missedToday": 0
   }
 }
 ```
@@ -1688,6 +1743,75 @@ Base path: `/ambulance` — **all routes require** Bearer token.
 ```
 
 Poll every few seconds on patient map; respect driver throttle (120/min).
+
+---
+
+### Telehealth (emergency video)
+
+Base path: `/telehealth` — **separate from in-person appointments** (`/appointments`).
+
+#### Patient
+
+| Method | Path | Roles | Purpose |
+|--------|------|-------|---------|
+| POST | `/telehealth/requests` | PATIENT | Start emergency request (optional `Idempotency-Key` header) |
+| GET | `/telehealth/requests/:id` | PATIENT | Poll status (triggers lazy reconcile) |
+| POST | `/telehealth/requests/:id/join` | PATIENT | Get signed video token when `IN_CALL` |
+| POST | `/telehealth/requests/:id/cancel` | PATIENT | Cancel while waiting |
+
+**Create body**
+
+```json
+{
+  "chiefComplaint": "Chest pain",
+  "preferredLanguage": "en"
+}
+```
+
+**Matching rules**
+
+- Only doctors with `isProvideTeleHealth=true`, `status=ACTIVE`, `telehealthPresence=ONLINE`, valid `telehealthOnlineUntil`, and **no** `activeTelehealthId` are offered.
+- Sequential ring: one doctor at a time, **45s** offer TTL; on decline/timeout, next random eligible doctor.
+- Up to **3 minutes** total search (`searchExpiresAt`); then status → `MISSED`.
+- While waiting, `doctorId` is `null`.
+
+**Status flow:** `SEARCHING` → `RINGING` → `IN_CALL` → `COMPLETED` | `MISSED` | `CANCELLED` | `DECLINED`
+
+#### Doctor
+
+| Method | Path | Roles | Purpose |
+|--------|------|-------|---------|
+| PATCH | `/telehealth/presence` | DOCTOR | Set `ONLINE` / `BUSY` / `OFFLINE` (+ optional `onlineForMinutes`) |
+| POST | `/telehealth/presence/heartbeat` | DOCTOR | Extend online window |
+| GET | `/telehealth/offers` | DOCTOR | Pending offers for this doctor |
+| POST | `/telehealth/requests/:id/accept` | DOCTOR | Accept ring (atomic claim) |
+| POST | `/telehealth/requests/:id/decline` | DOCTOR | Decline ring |
+| POST | `/telehealth/requests/:id/join` | DOCTOR | Join active call |
+| POST | `/telehealth/requests/:id/complete` | DOCTOR | End call; creates pending payment |
+
+#### Admin
+
+| Method | Path | Roles |
+|--------|------|-------|
+| GET | `/telehealth/requests` | ADMIN |
+
+Payment on complete follows ambulance pattern (`PENDING_CASH` / manual settlement).
+
+---
+
+### Business reports (admin)
+
+Base path: `/reports` — **ADMIN only**.
+
+| Method | Path | Query | Purpose |
+|--------|------|-------|---------|
+| GET | `/reports/revenue` | `from`, `to`, `groupBy=day\|week\|month`, `format=json\|csv` | Revenue by source |
+| GET | `/reports/operations` | same | Orders, lab, ambulance, telehealth counts |
+| GET | `/reports/doctors` | `from`, `to`, `take` (max 100) | Doctor KPIs |
+| GET | `/reports/top-medicines` | `from`, `to`, `take` | Top-selling medicines |
+| GET | `/reports/top-tests` | `from`, `to`, `take` | Top lab tests |
+
+Date range max **366 days**. CSV export escapes formula injection (`=`, `+`, `-`, `@` prefixed cells).
 
 ---
 

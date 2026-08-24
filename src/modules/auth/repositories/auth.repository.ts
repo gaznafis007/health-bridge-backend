@@ -106,4 +106,35 @@ export class AuthRepository {
   findUserById(id: string) {
     return this.prisma.user.findUnique({ where: { id } });
   }
+
+  async markEmailVerified(userId: string) {
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: { emailVerifiedAt: new Date() },
+    });
+    await this.recomputeVerified(userId, user.phoneVerifiedAt, user.emailVerifiedAt);
+    return user;
+  }
+
+  async markPhoneVerified(userId: string) {
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: { phoneVerifiedAt: new Date() },
+    });
+    await this.recomputeVerified(userId, user.phoneVerifiedAt, user.emailVerifiedAt);
+    return user;
+  }
+
+  private async recomputeVerified(
+    userId: string,
+    phoneVerifiedAt: Date | null,
+    emailVerifiedAt: Date | null,
+  ) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        isVerified: Boolean(phoneVerifiedAt && emailVerifiedAt),
+      },
+    });
+  }
 }
